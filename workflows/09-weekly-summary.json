@@ -1,0 +1,438 @@
+{
+  "name": "Job Agent - Weekly Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Agent – Weekly Summary\nEvery Sunday evening (UK): counts the week's new jobs, strong matches, red flags, applications, interviews, runs, failures and AI tokens, and saves one row to the **Weekly Summary** table (created automatically the first time).",
+        "height": 170,
+        "width": 900,
+        "color": 4
+      },
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -128
+      ],
+      "id": "d9665d93-abb5-4ffe-a568-6fbce9d1703d"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 18,
+              "triggerAtMinute": 23
+            }
+          ]
+        }
+      },
+      "name": "Sunday Evening",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -160,
+        96
+      ],
+      "id": "21be4d6c-275c-4325-bc7b-77f6991c7275"
+    },
+    {
+      "parameters": {},
+      "name": "Run Now (test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        288
+      ],
+      "id": "7f09d133-d0d6-4c49-85ba-f182718418a8"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "returnAll": true
+      },
+      "name": "Read Job Tracker",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        192
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "id": "6142eb2e-b085-4be5-87e1-0282e3e2c51b"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "returnAll": true
+      },
+      "name": "Read Run Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        304,
+        192
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "id": "1746cf85-5bb4-44db-9906-693b767f58f2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// WEEKLY STATS – what happened in the last 7 days (Job Tracker + Run Log)\nconst since = Date.now() - 7 * 24 * 60 * 60 * 1000;\nconst recent = (r) => new Date(r.createdAt).getTime() >= since;\nconst recentlyChanged = (r) => new Date(r.updatedAt || r.createdAt).getTime() >= since;\nconst jobs = $(\"Read Job Tracker\").all().map((i) => i.json).filter((j) => j.job_id);\nconst runs = $(\"Read Run Log\").all().map((i) => i.json).filter((r) => r.run_at && recent(r));\nconst added = jobs.filter(recent);\nconst st = (s) => jobs.filter((j) => recentlyChanged(j) && j.status === s).length;\nconst best = added.filter((j) => j.fit !== \"Red flag\" && ![\"skipped\", \"rejected\"].includes(j.status)).sort((a, b) => b.match_score - a.match_score)[0];\nconst failed = runs.filter((r) => r.status === \"FAILED\").length;\nconst tokens = runs.reduce((s, r) => s + (Number(r.ai_tokens) || 0), 0);\nconst okRuns = runs.filter((r) => r.duration_sec);\nconst row = {\n  week_ending: new Date().toLocaleDateString(\"en-GB\", { timeZone: \"Europe/London\" }),\n  jobs_added: added.length,\n  strong: added.filter((j) => j.fit === \"Strong\").length,\n  possible: added.filter((j) => j.fit === \"Possible\").length,\n  red_flags: added.filter((j) => j.fit === \"Red flag\").length,\n  applied: st(\"applied\"), interviews: st(\"interview\"), offers: st(\"offer\"),\n  runs: runs.length, failed_runs: failed, ai_tokens: tokens,\n  avg_run_sec: okRuns.length ? Math.round(okRuns.reduce((s, r) => s + Number(r.duration_sec), 0) / okRuns.length) : 0,\n  best_new_job: best ? `${best.title} – ${best.company} (${best.match_score})` : \"\",\n  note: [\n    runs.length < 5 ? `only ${runs.length} run(s) this week – was the laptop off at 8:05?` : \"\",\n    failed ? `${failed} failed run(s) – check the Run Log` : \"\",\n    added.filter((j) => j.fit === \"Strong\" && (j.status || \"new\") === \"new\").length ? `${added.filter((j) => j.fit === \"Strong\" && (j.status || \"new\") === \"new\").length} strong match(es) still waiting for you` : \"\"\n  ].filter(Boolean).join(\"; \")\n};\nreturn [{ json: row }];\n"
+      },
+      "name": "Weekly Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        192
+      ],
+      "id": "158ec844-e3a0-46a2-9404-5bc43697a2f1"
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "Weekly Summary",
+        "columns": {
+          "column": [
+            {
+              "name": "week_ending"
+            },
+            {
+              "name": "jobs_added",
+              "type": "number"
+            },
+            {
+              "name": "strong",
+              "type": "number"
+            },
+            {
+              "name": "possible",
+              "type": "number"
+            },
+            {
+              "name": "red_flags",
+              "type": "number"
+            },
+            {
+              "name": "applied",
+              "type": "number"
+            },
+            {
+              "name": "interviews",
+              "type": "number"
+            },
+            {
+              "name": "offers",
+              "type": "number"
+            },
+            {
+              "name": "runs",
+              "type": "number"
+            },
+            {
+              "name": "failed_runs",
+              "type": "number"
+            },
+            {
+              "name": "ai_tokens",
+              "type": "number"
+            },
+            {
+              "name": "avg_run_sec",
+              "type": "number"
+            },
+            {
+              "name": "best_new_job"
+            },
+            {
+              "name": "note"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "name": "Make Sure Table Exists",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        736,
+        192
+      ],
+      "executeOnce": true,
+      "id": "ddddf73c-7f63-4393-be45-4e9180bbd2aa"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "Weekly Summary",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "week_ending": "={{ $('Weekly Stats').first().json.week_ending }}",
+            "jobs_added": "={{ $('Weekly Stats').first().json.jobs_added }}",
+            "strong": "={{ $('Weekly Stats').first().json.strong }}",
+            "possible": "={{ $('Weekly Stats').first().json.possible }}",
+            "red_flags": "={{ $('Weekly Stats').first().json.red_flags }}",
+            "applied": "={{ $('Weekly Stats').first().json.applied }}",
+            "interviews": "={{ $('Weekly Stats').first().json.interviews }}",
+            "offers": "={{ $('Weekly Stats').first().json.offers }}",
+            "runs": "={{ $('Weekly Stats').first().json.runs }}",
+            "failed_runs": "={{ $('Weekly Stats').first().json.failed_runs }}",
+            "ai_tokens": "={{ $('Weekly Stats').first().json.ai_tokens }}",
+            "avg_run_sec": "={{ $('Weekly Stats').first().json.avg_run_sec }}",
+            "best_new_job": "={{ $('Weekly Stats').first().json.best_new_job }}",
+            "note": "={{ $('Weekly Stats').first().json.note }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "week_ending",
+              "displayName": "week_ending",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "jobs_added",
+              "displayName": "jobs_added",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "strong",
+              "displayName": "strong",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "possible",
+              "displayName": "possible",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "red_flags",
+              "displayName": "red_flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "applied",
+              "displayName": "applied",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "interviews",
+              "displayName": "interviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "offers",
+              "displayName": "offers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "runs",
+              "displayName": "runs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "failed_runs",
+              "displayName": "failed_runs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_tokens",
+              "displayName": "ai_tokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "avg_run_sec",
+              "displayName": "avg_run_sec",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "best_new_job",
+              "displayName": "best_new_job",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save Weekly Summary",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        192
+      ],
+      "id": "525b03d5-4988-4a22-8626-73ffefc9316f"
+    }
+  ],
+  "connections": {
+    "Sunday Evening": {
+      "main": [
+        [
+          {
+            "node": "Read Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Now (test)": {
+      "main": [
+        [
+          {
+            "node": "Read Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Job Tracker": {
+      "main": [
+        [
+          {
+            "node": "Read Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Run Log": {
+      "main": [
+        [
+          {
+            "node": "Weekly Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Stats": {
+      "main": [
+        [
+          {
+            "node": "Make Sure Table Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make Sure Table Exists": {
+      "main": [
+        [
+          {
+            "node": "Save Weekly Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

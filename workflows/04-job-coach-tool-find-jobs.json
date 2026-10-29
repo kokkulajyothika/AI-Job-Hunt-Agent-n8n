@@ -1,0 +1,136 @@
+{
+  "name": "Job Coach Tool - Find Jobs",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Coach tool – Find Jobs\nCalled by the Job Coach chat agent. Filters the Job Tracker and returns **short summaries** (no long text) to keep AI token use low.",
+        "width": 640,
+        "color": 5
+      },
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -112
+      ],
+      "id": "4b7ae367-aebc-4efd-b72d-cfcc75e2706b"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "fit"
+            },
+            {
+              "name": "status"
+            },
+            {
+              "name": "title_words"
+            },
+            {
+              "name": "min_score",
+              "type": "number"
+            },
+            {
+              "name": "limit",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "name": "When Called by Agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        160
+      ],
+      "id": "03e05161-1b2d-409e-be3a-1d57e02c7aed"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "fit",
+              "condition": "ilike",
+              "keyValue": "=%{{ $json.fit || '' }}%"
+            },
+            {
+              "keyName": "status",
+              "condition": "ilike",
+              "keyValue": "=%{{ $json.status || '' }}%"
+            },
+            {
+              "keyName": "match_score",
+              "condition": "gte",
+              "keyValue": "={{ Number($json.min_score) || 0 }}"
+            }
+          ]
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "match_score"
+      },
+      "name": "Search Job Tracker",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        160
+      ],
+      "alwaysOutputData": true,
+      "id": "8941a448-8589-4621-bfb4-b35e5028d612"
+    },
+    {
+      "parameters": {
+        "jsCode": "// COMPACT RESULTS – returns short job summaries only (no long CV / cover letter text),\n// so the chat agent stays within Groq's free token-per-minute limit.\n// v2: hides skipped/rejected jobs unless the agent asked for that status,\n//     and re-checks red flags at read time (catches rows scored before the flag rules existed).\nconst input = $(\"When Called by Agent\").first().json;\nconst askedStatus = String(input.status || \"\").trim().toLowerCase();\nconst limit = Math.min(Math.max(Number(input.limit) || 5, 1), 10);\n\nconst HIDDEN = [\"skipped\", \"rejected\"];\nconst RED_FLAG_TITLE = /\\b(trainee|traineeship|no experience (needed|required)|course|bootcamp|funded training|career change programme)\\b/i;\n\nlet rows = $input.all().map((i) => i.json).filter((r) => r.job_id);\n// Keyword search across title AND company (e.g. \"Searchability\" or \"data\").\nconst words = String(input.title_words || \"\").toLowerCase().split(/\\s+/).filter(Boolean);\nif (words.length) rows = rows.filter((r) => { const hay = (String(r.title || \"\") + \" \" + String(r.company || \"\")).toLowerCase(); return words.every((w) => hay.includes(w)); });\nconst hiddenCount = askedStatus ? 0 : rows.filter((r) => HIDDEN.includes(String(r.status || \"\").toLowerCase())).length;\nif (!askedStatus) rows = rows.filter((r) => !HIDDEN.includes(String(r.status || \"\").toLowerCase()));\n\nrows = rows.map((r) => {\n  let flags = String(r.flags || \"\").trim();\n  let fit = r.fit;\n  if (RED_FLAG_TITLE.test(String(r.title || \"\")) && !/paid training|training scheme/i.test(flags)) {\n    flags = (flags && flags !== \"-\" ? flags + \"; \" : \"\") + \"RED FLAG: possible paid training scheme – check before applying\";\n  }\n  if (/red flag/i.test(flags)) fit = \"Red flag\";\n  return { ...r, flags, fit };\n});\n\n// Red-flag jobs go to the bottom; everything else stays in score order.\nrows.sort((a, b) => (a.fit === \"Red flag\") - (b.fit === \"Red flag\") || (Number(b.match_score) || 0) - (Number(a.match_score) || 0));\n\nreturn [{ json: {\n  count: rows.length,\n  hidden_skipped_or_rejected: hiddenCount,\n  jobs: rows.slice(0, limit).map((r) => ({\n    job_id: r.job_id, title: r.title, company: r.company, location: r.location, salary: r.salary,\n    match_score: r.match_score, fit: r.fit, flags: r.flags || \"-\", status: r.status, url: r.url,\n    has_tailored_cv: Boolean(r.tailored_cv)\n  }))\n} }];\n"
+      },
+      "name": "Compact Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        160
+      ],
+      "id": "f70a54b5-2229-459e-ac0c-249153bbff40"
+    }
+  ],
+  "connections": {
+    "When Called by Agent": {
+      "main": [
+        [
+          {
+            "node": "Search Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Job Tracker": {
+      "main": [
+        [
+          {
+            "node": "Compact Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

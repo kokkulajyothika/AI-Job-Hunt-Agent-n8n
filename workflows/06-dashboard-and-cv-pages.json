@@ -1,0 +1,282 @@
+{
+  "name": "Job Agent - Dashboard & CV Pages",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Agent – Dashboard & CV pages\n**Dashboard:** http://localhost:5678/webhook/job-dashboard\n**Tailored CV:** http://localhost:5678/webhook/job-cv?job_id=reed-123 (add `&format=doc` for a Word file)\nBoth pages read the Job Tracker and Run Log tables live. The workflow must be published for these links to work.",
+        "height": 200,
+        "width": 980,
+        "color": 5
+      },
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1232,
+        -704
+      ],
+      "id": "e6e1d3fa-2a6e-4a68-ad83-32b7ec96b347"
+    },
+    {
+      "parameters": {
+        "path": "job-dashboard",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Dashboard Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        -400
+      ],
+      "id": "d3e493ab-dfc6-49ba-bc68-fcdc8a476783"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "returnAll": true
+      },
+      "name": "Read Job Tracker",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        -400
+      ],
+      "alwaysOutputData": true,
+      "id": "8b4a058b-7fd9-4a96-ba97-a348752cb22e"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "returnAll": true
+      },
+      "name": "Read Run Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -752,
+        -400
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "id": "42f20aa9-8882-4d21-95d9-61ed16ee0e42"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD DASHBOARD – one HTML page from the Job Tracker and the Run Log\nconst esc = (s) => String(s ?? \"\").replace(/[&<>\"']/g, (c) => ({ \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }[c]));\nconst jobs = $(\"Read Job Tracker\").all().map((i) => i.json).filter((j) => j.job_id);\nconst runs = $(\"Read Run Log\").all().map((i) => i.json).filter((r) => r.run_at)\n  .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));\nconst count = (f) => jobs.filter(f).length;\nconst FITS = [\"Strong\", \"Possible\", \"Weak\", \"Red flag\"];\nconst STATUSES = [\"new\", \"applied\", \"interview\", \"offer\", \"rejected\", \"skipped\"];\nconst byFit = FITS.map((f) => count((j) => j.fit === f));\nconst byStatus = STATUSES.map((s) => count((j) => (j.status || \"new\") === s));\nconst last = runs[runs.length - 1] || {};\nconst open = jobs.filter((j) => (j.fit === \"Strong\" || j.fit === \"Possible\") && (j.status || \"new\") === \"new\")\n  .sort((a, b) => b.match_score - a.match_score).slice(0, 12);\nconst base = \"http://localhost:5678/webhook/job-cv?job_id=\";\nconst tiles = [\n  [\"Jobs tracked\", jobs.length, \"\"],\n  [\"Strong matches\", byFit[0], \"fit = Strong\"],\n  [\"Applied\", count((j) => [\"applied\", \"interview\", \"offer\"].includes(j.status)), \"applied, interview or offer\"],\n  [\"Interviews\", count((j) => [\"interview\", \"offer\"].includes(j.status)), \"\"],\n  [\"Last run\", esc(last.status || \"–\"), esc(last.run_at || \"no runs yet\")]\n];\nconst runLabels = runs.map((r) => String(r.run_at).slice(0, 10));\nconst data = {\n  fits: FITS, byFit, statuses: STATUSES, byStatus, runLabels,\n  newJobs: runs.map((r) => r.new_jobs || 0), scored: runs.map((r) => r.ai_scored || 0),\n  tokens: runs.map((r) => r.ai_tokens || 0), seconds: runs.map((r) => r.duration_sec || 0)\n};\nconst rows = open.map((j) => `<tr><td><a href=\"${esc(j.url)}\" target=\"_blank\" rel=\"noopener\">${esc(j.title)}</a><div class=\"sub\">${esc(j.company)} · ${esc(j.location)}${j.salary ? \" · \" + esc(j.salary) : \"\"}</div></td>\n<td class=\"num\">${esc(j.match_score)}</td><td><span class=\"pill ${esc(String(j.fit).replace(\" \", \"-\").toLowerCase())}\">${esc(j.fit)}</span></td>\n<td class=\"flags\">${esc(j.flags || \"\")}</td><td class=\"links\">${j.tailored_cv ? `<a href=\"${base}${encodeURIComponent(j.job_id)}\" target=\"_blank\">CV page</a> · <a href=\"http://localhost:5678/webhook/tailored-cv?job_id=${encodeURIComponent(j.job_id)}\">Word</a> · <a href=\"http://localhost:5678/webhook/tailored-cv?job_id=${encodeURIComponent(j.job_id)}&type=letter\">Cover letter</a>` : \"–\"}</td></tr>`).join(\"\");\nconst runRows = runs.slice(-8).reverse().map((r) => `<tr><td>${esc(r.run_at)}</td><td><span class=\"pill ${r.status === \"OK\" ? \"ok\" : r.status === \"FAILED\" ? \"red-flag\" : \"possible\"}\">${esc(r.status)}</span></td>\n<td class=\"num\">${esc(r.jobs_found ?? \"\")}</td><td class=\"num\">${esc(r.new_jobs ?? \"\")}</td><td class=\"num\">${esc(r.ai_scored ?? \"\")}</td><td class=\"num\">${esc(r.ai_failed ?? \"\")}</td><td class=\"num\">${esc(Number(r.ai_tokens || 0).toLocaleString(\"en-GB\"))}</td><td class=\"num\">${esc(r.duration_sec ?? \"\")}s</td><td class=\"flags\">${esc(r.notes || \"\")}</td></tr>`).join(\"\");\n\nconst html = `<!doctype html><html lang=\"en-GB\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>Job Hunt Dashboard</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono&display=swap\" rel=\"stylesheet\">\n<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js\"></script>\n<style>\n:root{--bg:#f4f6f8;--card:#fff;--ink:#17212b;--muted:#5b6b7a;--line:#dde3e9;--accent:#1d5fa8;--strong:#1f7a4d;--possible:#b7791f;--weak:#7a8794;--red:#b42318;font-family:\"IBM Plex Sans\",Arial,sans-serif}\n@media (prefers-color-scheme:dark){:root{--bg:#10161c;--card:#18212a;--ink:#e6edf3;--muted:#93a4b4;--line:#2a3743;--accent:#6aa8ec;--strong:#4cc38a;--possible:#e0a84a;--weak:#8b98a5;--red:#f07167}}\nbody{margin:0;background:var(--bg);color:var(--ink)}main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}\nh1{font-size:26px;margin:0 0 4px}h2{font-size:16px;margin:0 0 12px}.lead{color:var(--muted);margin:0 0 20px}\n.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}\n.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}\n.tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums}.tile span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}.tile small{display:block;color:var(--muted);font-size:12px}\n.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:16px}.card{min-width:0}\n.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:6px 8px;white-space:nowrap}\ntd{border-bottom:1px solid var(--line);padding:8px;vertical-align:top}td.num{text-align:right;font-family:\"IBM Plex Mono\",monospace;font-variant-numeric:tabular-nums}\n.sub{color:var(--muted);font-size:12px}.flags{color:var(--muted);font-size:12px;max-width:260px}.links{white-space:nowrap}a{color:var(--accent)}\n.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:var(--weak)}.pill.strong,.pill.ok{background:var(--strong)}.pill.possible{background:var(--possible)}.pill.red-flag{background:var(--red)}\nfooter{color:var(--muted);font-size:12px;margin-top:16px}\n</style></head><body><main>\n<h1>Job Hunt Dashboard</h1><p class=\"lead\">AI Job Hunt Agent · updated ${esc(new Date().toLocaleString(\"en-GB\", { timeZone: \"Europe/London\" }))} (UK time) · refresh the page for the latest data</p>\n<div class=\"tiles\">${tiles.map(([l, v, s]) => `<div class=\"tile\"><span>${l}</span><b>${v}</b><small>${s}</small></div>`).join(\"\")}</div>\n<div class=\"grid\"><div class=\"card\"><h2>Jobs by fit</h2><canvas id=\"fit\" height=\"200\"></canvas></div>\n<div class=\"card\"><h2>Application pipeline</h2><canvas id=\"status\" height=\"200\"></canvas></div></div>\n<div class=\"grid\"><div class=\"card\"><h2>Jobs per run</h2><canvas id=\"runs\" height=\"200\"></canvas></div>\n<div class=\"card\"><h2>AI tokens and run time</h2><canvas id=\"cost\" height=\"200\"></canvas></div></div>\n<div class=\"card\" style=\"margin-bottom:16px\"><h2>Open matches to review (Strong / Possible, status new)</h2><div class=\"scroll\"><table><thead><tr><th>Job</th><th>Score</th><th>Fit</th><th>Flags</th><th>Tailored CV</th></tr></thead><tbody>${rows || '<tr><td colspan=\"5\">No open matches.</td></tr>'}</tbody></table></div></div>\n<div class=\"card\"><h2>Recent runs</h2><div class=\"scroll\"><table><thead><tr><th>Run (UK)</th><th>Status</th><th>Found</th><th>New</th><th>Scored</th><th>Failed</th><th>Tokens</th><th>Time</th><th>Notes</th></tr></thead><tbody>${runRows || '<tr><td colspan=\"9\">No runs yet.</td></tr>'}</tbody></table></div></div>\n<footer>Scores are calculated in code from AI ratings that quote the CV; always review a job before applying.</footer>\n</main><script>\nconst D=${JSON.stringify(data)};\nif(window.Chart){const css=getComputedStyle(document.documentElement);const c=(v)=>css.getPropertyValue(v).trim();\nChart.defaults.color=c(\"--muted\");Chart.defaults.borderColor=c(\"--line\");Chart.defaults.font.family=\"IBM Plex Sans, Arial\";\nnew Chart(fit,{type:\"bar\",data:{labels:D.fits,datasets:[{data:D.byFit,backgroundColor:[c(\"--strong\"),c(\"--possible\"),c(\"--weak\"),c(\"--red\")]}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});\nnew Chart(status,{type:\"bar\",data:{labels:D.statuses,datasets:[{data:D.byStatus,backgroundColor:c(\"--accent\")}]},options:{indexAxis:\"y\",plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});\nnew Chart(runs,{type:\"line\",data:{labels:D.runLabels,datasets:[{label:\"New jobs\",data:D.newJobs,borderColor:c(\"--accent\"),tension:.3},{label:\"AI scored\",data:D.scored,borderColor:c(\"--strong\"),tension:.3}]},options:{scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});\nnew Chart(cost,{type:\"bar\",data:{labels:D.runLabels,datasets:[{label:\"AI tokens\",data:D.tokens,backgroundColor:c(\"--accent\"),yAxisID:\"y\"},{type:\"line\",label:\"Run time (s)\",data:D.seconds,borderColor:c(\"--possible\"),yAxisID:\"y1\"}]},options:{scales:{y:{beginAtZero:true,position:\"left\"},y1:{beginAtZero:true,position:\"right\",grid:{drawOnChartArea:false}}}}});}\n</script></body></html>`;\nreturn [{ json: { html } }];\n"
+      },
+      "name": "Build Dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        -400
+      ],
+      "id": "0d5d4d75-99ad-4703-a884-82089e2942dc"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Show Dashboard",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -304,
+        -400
+      ],
+      "id": "3dec1073-e205-4548-b8f8-5e9ad31c36bb"
+    },
+    {
+      "parameters": {
+        "path": "job-cv",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Tailored CV Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        -144
+      ],
+      "id": "900f605f-07bd-48a5-953c-e3f3818d9567"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "keyValue": "={{ $json.query.job_id || 'none' }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "name": "Find Job",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        -144
+      ],
+      "alwaysOutputData": true,
+      "id": "a6118de3-a62e-4204-ada4-f62ea5f67b25"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD TAILORED CV – full CV for one job, using the tailored summary, skills order and\n// project bullets saved by the job agent. ?format=doc downloads it as a Word file.\nconst esc = (s) => String(s ?? \"\").replace(/[&<>\"']/g, (c) => ({ \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }[c]));\nconst q = $(\"Tailored CV Request\").first().json.query || {};\nconst job = $input.all().map((i) => i.json).find((j) => j.job_id) || null;\n\nconst ME = {\n  name: \"Your Name\",\n  headline: \"MSc Artificial Intelligence Student  ·  LLMs & Agentic AI  ·  Python  ·  AI Automation\",\n  contact: [\"Your City, UK\", \"+44 0000 000000\", \"you@example.com\", \"linkedin.com/in/your-profile\", \"github.com/your-username\"],\n  summary: \"Computer Science graduate and MSc Artificial Intelligence student at Teesside University who builds practical, explainable LLM applications. Built an AI CV screening assistant and an AI job-hunt agent in n8n that verify every AI evidence quote and calculate scores in code. Strong foundation in Python, machine learning, deep learning, REST APIs and responsible AI.\",\n  skills: [\n    [\"Languages\", \"Python, SQL, JavaScript, Java, C, C++\"],\n    [\"LLMs & Agentic AI\", \"Large Language Models (LLMs), Generative AI, AI Agents (tools + memory), LangChain, LangGraph, Groq API, Prompt Engineering, Context Engineering, Structured Outputs (JSON Schema), LLM Output Verification\"],\n    [\"Automation & APIs\", \"n8n (Webhooks, Schedule Trigger, HTTP Request, Code nodes, Data Tables, sub-workflows), REST APIs, API integration, JSON, Flask, Node.js, Express.js\"],\n    [\"Machine Learning\", \"Deep Learning, Neural Networks, CNNs, Computer Vision, Model Training and Evaluation, TensorFlow, PyTorch, Scikit-learn, OpenCV, YOLO, Pandas, NumPy\"],\n    [\"Data & Tools\", \"MySQL, MongoDB, Git, GitHub, Docker, Jupyter Notebook, Postman\"],\n    [\"Responsible AI\", \"PII anonymisation, human-in-the-loop design, data minimisation (UK GDPR principles)\"]\n  ],\n  projects: [\n    { key: /job[\\s-]?hunt|job (ads?|adverts?|listings?|search)|reed|remotive|vacanc|matching jobs/i,\n      title: \"AI Job Hunt Agent\", tech: \"n8n, Groq API, Reed & Remotive APIs, JavaScript, n8n Data Tables, AI Agent\",\n      bullets: [\n        \"Built a scheduled n8n agent that searches the Reed and Remotive job APIs every morning, fetches full adverts and filters out senior, old, irrelevant and duplicate roles.\",\n        \"Used an LLM with strict JSON-schema output to rate each job requirement against the CV with exact quotes; JavaScript verifies every quote and calculates the match score, and flags paid training schemes and senior roles.\",\n        \"Generated tailored CV summaries and cover letters for the top matches, with a safety check that removes any skill not found in the CV.\",\n        \"Added a run log, error-alert workflow, dashboard and a chat agent with memory and four tools; moved search into a compact sub-workflow, cutting the agent's token use by about two-thirds.\"\n      ] },\n    { key: /cv|screen|candidate|recruit/i,\n      title: \"AI CV Screening Assistant\", tech: \"n8n, Groq API (gpt-oss-20b), JavaScript, Webhooks, REST APIs, n8n Data Tables, HTML/CSS, Docker\",\n      bullets: [\n        \"Built an n8n workflow that screens a CV against a job description and returns an evidence-based report, through an animated web form and a JSON webhook API.\",\n        \"Moved scoring out of the LLM: the model rates each requirement and JavaScript calculates a 0-100 score from a weighted rubric (required 50%, preferred 20%, experience 20%, education 10%).\",\n        \"Added a hallucination check that searches the CV for every AI evidence quote; unverified quotes get half credit and are flagged for the human reviewer.\",\n        \"Anonymised personal details before the CV reaches the LLM; the same CV scored 82/100 in 3 repeated runs thanks to strict JSON-schema output, temperature 0 and a fixed seed.\"\n      ] }\n  ],\n  education: [\n    [\"MSc Artificial Intelligence\", \"Teesside University, United Kingdom\", \"January 2026 – January 2028 (expected)\", \"Machine Learning, Deep Learning, Computer Vision, Natural Language Processing, Intelligent Systems and AI Applications.\"],\n    [\"B.Tech Computer Science and Engineering\", \"Christu Jyothi Institute of Technology and Science, Telangana, India\", \"October 2021 – July 2025\", \"Programming, Data Structures and Algorithms, Object-Oriented Programming, Database Management Systems and Software Engineering.\"]\n  ],\n  extra: [\"Availability: [your availability]\"]\n};\n\nlet summary = ME.summary, topSkills = [], tailoredBullets = [], note = \"\";\nif (!job) note = `No job found with id \"${esc(q.job_id || \"\")}\". Showing the general CV.`;\nelse if (!job.tailored_cv) note = \"This job has no tailored version yet (only the top matches get one). Showing the general CV.\";\nelse {\n  const t = String(job.tailored_cv);\n  const sec = (start, end) => { const m = t.match(new RegExp(start + \"\\\\s*\\\\n([\\\\s\\\\S]*?)(?:\\\\n\\\\s*\\\\n|\\\\n\" + end + \"|$)\")); return m ? m[1].trim() : \"\"; };\n  const ts = sec(\"PROFESSIONAL SUMMARY \\\\(tailored\\\\)\", \"KEY SKILLS\");\n  // Clean CV style only: no \"I / my / me\" and no company name. Otherwise keep the polished base summary.\n  const firstPerson = /\\b(I|I'm|I've|my|me)\\b/.test(ts);\n  const namesCompany = job.company && ts.toLowerCase().includes(String(job.company).toLowerCase().split(/\\s+/)[0]);\n  if (ts && !firstPerson && !namesCompany) summary = ts;\n  topSkills = sec(\"KEY SKILLS \\\\(put these first\\\\)\", \"PROJECT\").split(\"·\").map((s) => s.trim()).filter(Boolean);\n  const b = t.match(/PROJECT BULLETS TO USE\\s*\\n([\\s\\S]*?)(?:\\n\\s*\\n|\\nATS|$)/);\n  tailoredBullets = b ? b[1].split(\"\\n\").map((l) => l.replace(/^\\s*-\\s*/, \"\").trim()).filter(Boolean) : [];\n}\nconst projects = ME.projects.map((p, idx) => {\n  const mine = tailoredBullets.filter((x) => p.key.test(x) && !(idx === 1 && ME.projects[0].key.test(x)));\n  return { ...p, bullets: mine.length >= 3 ? mine : p.bullets };\n});\nconst target = job ? `${job.title} – ${job.company}` : \"\";\nconst row = (left, right) => `<table class=\"row\"><tr><td class=\"l\">${left}</td><td class=\"r\">${right}</td></tr></table>`;\nconst body = `\n<header><h1>${esc(ME.name)}</h1><p class=\"headline\">${esc(ME.headline)}</p><p class=\"contact\">${ME.contact.map(esc).join(\"&nbsp;&nbsp;|&nbsp;&nbsp;\")}</p></header>\n<h2>Profile</h2><p>${esc(summary)}</p>\n<h2>Skills</h2>\n${topSkills.length ? `<p class=\"core\"><b>Core skills for this role:</b> ${topSkills.map(esc).join(\" · \")}</p>` : \"\"}\n<table class=\"skills\">${ME.skills.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join(\"\")}</table>\n<h2>Projects</h2>${projects.map((p) => `<div class=\"item\">${row(`<b>${esc(p.title)}</b>`, \"\")}<p class=\"tech\">${esc(p.tech)}</p><ul>${p.bullets.map((x) => `<li>${esc(x)}</li>`).join(\"\")}</ul></div>`).join(\"\")}\n<h2>Education</h2>${ME.education.map(([d, s, w, r]) => `<div class=\"item\">${row(`<b>${esc(d)}</b>`, esc(w))}<p class=\"tech\">${esc(s)}</p><p class=\"small\">Relevant areas: ${esc(r)}</p></div>`).join(\"\")}\n<h2>Additional Information</h2>${ME.extra.map((x) => `<p class=\"small\">${esc(x)}</p>`).join(\"\")}`;\nconst style = `body{font-family:Calibri,Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:10.5pt;line-height:1.38;max-width:780px;margin:0 auto;padding:28px 32px;background:#fff}\nheader{text-align:center;margin-bottom:6px}\nh1{font-size:22pt;margin:0;letter-spacing:.02em;color:#14284b}\n.headline{margin:3px 0 2px;font-size:10.5pt;color:#3d4f6b;letter-spacing:.02em}\n.contact{margin:2px 0 0;font-size:9.5pt;color:#333}\nh2{font-size:10.5pt;text-transform:uppercase;letter-spacing:.12em;color:#14284b;border-bottom:1.2px solid #14284b;margin:14px 0 6px;padding-bottom:2px}\np{margin:3px 0}.small{font-size:10pt;color:#333}.core{margin:2px 0 6px}\n.tech{margin:1px 0 0;color:#555;font-style:italic;font-size:9.5pt}\n.item{margin:0 0 8px}\nul{margin:3px 0 0;padding-left:16px}li{margin:2px 0}\ntable.row{width:100%;border-collapse:collapse}table.row td{padding:0;vertical-align:bottom}td.r{text-align:right;white-space:nowrap;font-size:9.5pt;color:#444}\n.skills{border-collapse:collapse;width:100%}.skills th{text-align:left;vertical-align:top;padding:2px 12px 2px 0;white-space:nowrap;font-size:10pt;width:1%;color:#14284b}.skills td{padding:2px 0;font-size:10pt}\n.bar{font-family:Arial,sans-serif;background:#f3f6fa;border:1px solid #d5deea;border-radius:6px;padding:10px 12px;margin:0 auto 18px;max-width:780px;font-size:10pt}\n@media print{.bar{display:none}body{padding:0}}`;\n\nif (q.format === \"doc\") {\n  const doc = `<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\"><head><meta charset=\"utf-8\"><title>CV</title><style>${style}</style></head><body>${body}</body></html>`;\n  const file = `Your_Name_CV${job ? \"_\" + String(job.company).replace(/[^A-Za-z0-9]+/g, \"_\").slice(0, 40) : \"\"}.doc`;\n  return [{ json: { body: doc, contentType: \"application/msword\", disposition: `attachment; filename=\"${file}\"` } }];\n}\nconst link = job ? `?job_id=${encodeURIComponent(job.job_id)}&format=doc` : \"?format=doc\";\nconst page = `<!doctype html><html lang=\"en-GB\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CV – ${esc(target || ME.name)}</title><style>${style}</style></head><body>\n<div class=\"bar\">${target ? `Tailored for <b>${esc(target)}</b> · ` : \"\"}${note ? esc(note) + \" · \" : \"\"}<a href=\"${link}\">Download as Word</a> · or press <b>Ctrl+P → Save as PDF</b>. Read it through before sending: AI wording can still overstate things.</div>\n${body}</body></html>`;\nreturn [{ json: { body: page, contentType: \"text/html; charset=utf-8\", disposition: \"inline\" } }];\n"
+      },
+      "name": "Build Tailored CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -144
+      ],
+      "id": "1b092924-bfca-4dd2-b333-3602c4b7a750"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "={{ $json.contentType }}"
+              },
+              {
+                "name": "Content-Disposition",
+                "value": "={{ $json.disposition }}"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Send CV",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -528,
+        -144
+      ],
+      "id": "07773d77-02d8-4365-aa76-7498696636de"
+    }
+  ],
+  "connections": {
+    "Dashboard Request": {
+      "main": [
+        [
+          {
+            "node": "Read Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Job Tracker": {
+      "main": [
+        [
+          {
+            "node": "Read Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Run Log": {
+      "main": [
+        [
+          {
+            "node": "Build Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Show Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tailored CV Request": {
+      "main": [
+        [
+          {
+            "node": "Find Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Job": {
+      "main": [
+        [
+          {
+            "node": "Build Tailored CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Tailored CV": {
+      "main": [
+        [
+          {
+            "node": "Send CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

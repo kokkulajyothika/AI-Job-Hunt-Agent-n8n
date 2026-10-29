@@ -1,0 +1,333 @@
+{
+  "name": "Job Coach Tool - Tailor CV",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Coach tool – Tailor CV\nCalled by the Job Coach chat agent when the candidate asks for a CV for a specific job. Reads the job, fetches the full Reed advert, asks Groq (gpt-oss-20b) for a tailored CV + cover letter using **only CV facts**, runs the safety checks in code, saves to the Job Tracker and returns short links.",
+        "height": 200,
+        "width": 900,
+        "color": 5
+      },
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -112
+      ],
+      "id": "82df4dbc-6aef-4276-a222-4b5f96888c89"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "job_id"
+            }
+          ]
+        }
+      },
+      "name": "When Called by Agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        176
+      ],
+      "id": "2d0ee55a-db17-40e0-9a8b-79404277c7b9"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "name": "Get Job",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        176
+      ],
+      "alwaysOutputData": true,
+      "id": "2343c0dd-1b09-459c-8a57-1eea33e06cb0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// CHECK JOB – stop with a clear message if the job_id is not in the Job Tracker.\nconst asked = $(\"When Called by Agent\").first().json.job_id;\nconst row = $input.all().map((i) => i.json).find((r) => r.job_id);\nif (!row) throw new Error(\"No job found with job_id \" + asked + \". Use Find Jobs first to get the right job_id.\");\nreturn [{ json: row }];\n"
+      },
+      "name": "Check Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        176
+      ],
+      "id": "afd6337f-e25c-4797-9f6f-70c7b1d82db0"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.reed.co.uk/api/1.0/jobs/' + String($json.job_id).replace('reed-', '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "name": "Get Full Reed Advert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        464,
+        176
+      ],
+      "alwaysOutputData": true,
+      "id": "c6f2ad11-d2c3-42eb-a6c5-2720ad298c7b",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "",
+          "name": "Reed API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD TAILORING REQUEST\n// Uses the full Reed advert when available, otherwise the saved match notes.\n// The CV below is the candidate's real CV – the AI may only use facts from it.\nconst CV = \"YOUR NAME\\nAI Engineer Intern | Machine Learning | LLMs & Agentic AI | AI Automation\\nLocation: Your City, UK\\n\\nPROFESSIONAL SUMMARY\\nComputer Science graduate and MSc Artificial Intelligence student at Teesside University who builds practical, explainable LLM applications. Built an AI CV screening assistant and an AI job-hunt agent in n8n that verify every AI evidence quote and calculate scores in code. Strong foundation in Python, machine learning, deep learning, REST APIs and responsible AI.\\n\\nTECHNICAL SKILLS\\nProgramming Languages: Python, JavaScript, Java, SQL, C, C++\\nLLMs & Agentic AI: Large Language Models (LLMs), Generative AI, LangChain, LangGraph, Groq API, Prompt Engineering, Context Engineering, Structured Outputs (JSON Schema), LLM Output Verification, AI Agents (tools + memory)\\nAI Workflow Automation: n8n (Webhooks, Form Trigger, Schedule Trigger, HTTP Request, Code nodes, Data Tables), API integration, error handling and retries\\nAI & Machine Learning: Machine Learning, Deep Learning, Neural Networks, CNNs, Computer Vision, Model Training and Evaluation, TensorFlow, PyTorch, Scikit-learn, OpenCV, YOLO, Faster R-CNN\\nResponsible AI: PII anonymisation, human-in-the-loop design, data minimisation (UK GDPR principles)\\nData & Analytics: Pandas, NumPy, Data Cleaning, Data Preprocessing, Exploratory Data Analysis\\nWeb Development & APIs: REST APIs, JSON, Flask, Node.js, Express.js, React.js, HTML, CSS, Spring Boot\\nDatabases: MySQL, SQL, MongoDB\\nDeveloper Tools: Git, GitHub, Docker, VS Code, Jupyter Notebook, Postman\\n\\nPROJECTS\\n1. AI Job Hunt Agent - n8n, Groq API, Reed & Remotive APIs, JavaScript, n8n Data Tables, AI Agent\\n- Built a scheduled n8n agent that searches the Reed and Remotive job APIs every morning, fetches full adverts and filters out senior, old, irrelevant and duplicate roles.\\n- Used an LLM with strict JSON-schema output to rate each job requirement against my CV with exact quotes; JavaScript verifies every quote and calculates the match score, and flags paid training schemes and senior roles.\\n- Generated tailored CV summaries and cover letters for the top matches, with a safety check that removes any skill not in my CV.\\n- Added a run log, error-alert workflow, dashboard and a chat agent with memory and four tools; moved search into a compact sub-workflow, cutting the agent's token use by about two-thirds.\\n\\n2. AI CV Screening Assistant - n8n, Groq API (gpt-oss-20b), JavaScript, Webhooks, REST APIs, n8n Data Tables, HTML/CSS, Docker\\n- Built an n8n workflow that screens a CV against a job description and returns an evidence-based report, through an animated web form and a JSON webhook API.\\n- Moved scoring out of the LLM: the model rates each requirement as met, partial, not evidenced or lacking, and JavaScript calculates a 0-100 score from a weighted rubric (required 50%, preferred 20%, experience 20%, education 10%).\\n- Added a hallucination check that searches the CV for every AI evidence quote; unverified quotes get half credit and are flagged for the human reviewer.\\n- Anonymised names, emails, phone numbers and links before the CV reaches the LLM, to reduce bias.\\n- Used strict JSON-schema output, temperature 0 and a fixed seed; the same CV scored 82/100 in 3 repeated runs.\\n- Added input validation, 3 retries, clear 400/502 error responses, and a screening history saved to an n8n Data Table.\\n\\nEDUCATION\\nMSc Artificial Intelligence - Teesside University, United Kingdom - January 2026 to January 2028 (expected). Relevant areas: Machine Learning, Deep Learning, Computer Vision, Natural Language Processing, Intelligent Systems and AI Applications.\\nB.Tech in Computer Science and Engineering - Christu Jyothi Institute of Technology and Science, Telangana, India - October 2021 to July 2025. Relevant areas: Programming, Data Structures and Algorithms, Object-Oriented Programming, Database Management Systems and Software Engineering.\\n\\nADDITIONAL INFORMATION\\nAvailability: [your availability].\\nCareer interests: AI Engineering, Machine Learning, Applied AI, LLM Applications, Agentic AI, AI Automation and Computer Vision.\";\nconst SYSTEM = \"You help a candidate tailor her CV and write a cover letter for ONE job advert, so it passes ATS keyword screening AND stays 100% truthful. Fill every field.\\n\\nSTRICT HONESTY RULES:\\n- Use ONLY facts written in the CV. Never add skills, tools, employers, years of experience, grades, results or achievements that are not in the CV.\\n- You MAY reorder, shorten and reword CV content, and use the advert's own wording when it describes the same thing the CV shows (for example, the CV says \\\"REST APIs\\\" and the advert says \\\"API integration\\\").\\n- If the advert asks for something the CV does not show, put it in ats_keywords_missing. Never put it anywhere else.\\n\\nFields:\\n- tailored_summary: 2 or 3 sentences (max 60 words) for the top of the CV, aimed at this job, using only CV facts. Write in standard CV style without 'I', 'my' or 'me' (for example: 'MSc Artificial Intelligence student who builds ...'). Do not name the company or the recruiter. Avoid filler words such as passionate, eager or hard-working. Never claim abilities the CV does not show, such as 'proven ability', production deployment, stakeholder work or translating business requirements.\\n- top_skills: 8 to 12 skills copied exactly as written in the CV, most relevant to this advert first.\\n- highlight_bullets: 3 or 4 project bullets from the CV, reworded to match the advert's language, with no new facts.\\n- ats_keywords_matched: keywords from the advert that the CV genuinely shows.\\n- ats_keywords_missing: keywords from the advert that the CV does not show.\\n- cover_letter: 170 to 230 words. Start with \\\"Dear Hiring Manager,\\\". Mention the job title and company. Use 2 or 3 specific CV facts that match the advert. Friendly, professional UK English. Do not mention visa status. Do NOT write a sign-off or name at the end; it is added automatically.\\n\";\nconst SCHEMA = {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"tailored_summary\",\"top_skills\",\"highlight_bullets\",\"ats_keywords_matched\",\"ats_keywords_missing\",\"cover_letter\"],\"properties\":{\"tailored_summary\":{\"type\":\"string\"},\"top_skills\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"highlight_bullets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"ats_keywords_matched\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"ats_keywords_missing\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"cover_letter\":{\"type\":\"string\"}}};\nconst strip = (html) => String(html || \"\").replace(/<[^>]+>/g, \" \").replace(/&nbsp;/g, \" \").replace(/&amp;/g, \"&\")\n  .replace(/&lt;/g, \"<\").replace(/&gt;/g, \">\").replace(/&#39;|&rsquo;/g, \"'\").replace(/&quot;/g, '\"').replace(/\\s+/g, \" \").trim();\nconst job = $(\"Check Job\").first().json;\nconst d = $input.first().json || {};\nconst full = d.jobDescription ? strip(d.jobDescription).slice(0, 4000) : \"\";\nconst advert = full || (\"(Full advert not available – using saved notes)\\nWhy it fits: \" + (job.why_fit || \"\") + \"\\nMissing: \" + (job.missing || \"\"));\nconst user = \"JOB TITLE: \" + job.title + \"\\nCOMPANY: \" + job.company + \"\\nLOCATION: \" + job.location +\n  \"\\n\\nJOB ADVERT:\\n\" + advert + \"\\n\\nCANDIDATE CV:\\n\" + CV;\nreturn [{ json: { full_advert: Boolean(full), groqBody: {\n  model: \"openai/gpt-oss-20b\", temperature: 0.3, seed: 42, reasoning_effort: \"low\", max_completion_tokens: 4000,\n  response_format: { type: \"json_schema\", json_schema: { name: \"cv_tailoring\", strict: true, schema: SCHEMA } },\n  messages: [{ role: \"system\", content: SYSTEM }, { role: \"user\", content: user }]\n} } }];\n"
+      },
+      "name": "Build Tailoring Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        176
+      ],
+      "id": "efadbb52-e980-40bb-abc0-37bc822f022a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.groqBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "name": "Ask Groq: Tailor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        864,
+        176
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "27710b27-bdff-4db8-af85-da356c416ae4",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD TAILORED CV & COVER LETTER (same safety checks as the main agent)\n// - every \"top skill\" must appear in the real CV, otherwise it is removed\n// - any email the AI writes is removed; real contact details are added by code\n// - if the AI call failed, stop: nothing is overwritten in the Job Tracker\nconst norm = (s) => String(s || \"\").toLowerCase().replace(/[^a-z0-9+#%.]+/g, \" \").trim();\nconst CVN = norm($(\"Build Tailoring Request\").first().json.groqBody.messages[1].content.split(\"CANDIDATE CV:\")[1]);\nconst SIGN_OFF = \"\\n\\nKind regards,\\nYour Name\\you@example.com | linkedin.com/in/your-profile | github.com/your-username\";\nconst res = $input.first().json;\nlet t;\ntry { t = JSON.parse(res.choices[0].message.content); }\ncatch (e) { throw new Error(\"Tailoring failed (Groq): \" + String(res.error?.message || e.message).slice(0, 200) + \". Try again in a minute.\"); }\nconst skills = (t.top_skills || []).filter((s) => CVN.includes(norm(s)));\nconst dropped = (t.top_skills || []).filter((s) => !CVN.includes(norm(s)));\nconst tailored = [\n  \"PROFESSIONAL SUMMARY (tailored)\", t.tailored_summary, \"\",\n  \"KEY SKILLS (put these first)\", skills.join(\" · \"), \"\",\n  \"PROJECT BULLETS TO USE\", ...(t.highlight_bullets || []).map((b) => \"- \" + b), \"\",\n  \"ATS KEYWORDS YOU GENUINELY MATCH: \" + (t.ats_keywords_matched || []).join(\", \"),\n  \"IN THE AD BUT NOT IN YOUR CV (do NOT add unless true): \" + (t.ats_keywords_missing || []).join(\", \"),\n  dropped.length ? \"Removed by safety check (not in your CV): \" + dropped.join(\", \") : \"\"\n].join(\"\\n\").trim();\nconst letter = String(t.cover_letter || \"\").replace(/[\\w.+-]+@[\\w-]+\\.[\\w.]+/g, \"\").trim() + SIGN_OFF;\nreturn [{ json: { job_id: $(\"Check Job\").first().json.job_id, tailored_cv: tailored, cover_letter: letter,\n  matched: t.ats_keywords_matched || [], missing: t.ats_keywords_missing || [], dropped } }];\n"
+      },
+      "name": "Build Tailored CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        176
+      ],
+      "id": "2b3a3cd1-df34-425b-8b2c-5f56159abc43"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tailored_cv": "={{ $json.tailored_cv }}",
+            "cover_letter": "={{ $json.cover_letter }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "tailored_cv",
+              "displayName": "tailored_cv",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "cover_letter",
+              "displayName": "cover_letter",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save to Job Tracker",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        176
+      ],
+      "id": "74cf501b-3ae5-4fb4-a10e-9c07180d236f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// SHORT REPLY FOR THE CHAT AGENT – links, not the whole CV, to save tokens.\nconst job = $(\"Check Job\").first().json;\nconst t = $(\"Build Tailored CV\").first().json;\nconst base = \"http://localhost:5678/webhook/\";\nconst id = encodeURIComponent(job.job_id);\nreturn [{ json: {\n  done: true,\n  job: job.title + \" at \" + job.company,\n  used_full_advert: $(\"Build Tailoring Request\").first().json.full_advert,\n  cv_page: base + \"job-cv?job_id=\" + id,\n  word_download: base + \"tailored-cv?job_id=\" + id,\n  keywords_matched: t.matched.slice(0, 10),\n  in_advert_but_not_in_cv: t.missing.slice(0, 10),\n  removed_by_safety_check: t.dropped,\n  note: \"Saved to the Job Tracker. The cover letter is on the CV page.\"\n} }];\n"
+      },
+      "name": "Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        176
+      ],
+      "id": "c1a0d588-e453-4d8e-b822-7749048fdc72"
+    }
+  ],
+  "connections": {
+    "When Called by Agent": {
+      "main": [
+        [
+          {
+            "node": "Get Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job": {
+      "main": [
+        [
+          {
+            "node": "Check Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Job": {
+      "main": [
+        [
+          {
+            "node": "Get Full Reed Advert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Full Reed Advert": {
+      "main": [
+        [
+          {
+            "node": "Build Tailoring Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Tailoring Request": {
+      "main": [
+        [
+          {
+            "node": "Ask Groq: Tailor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Groq: Tailor": {
+      "main": [
+        [
+          {
+            "node": "Build Tailored CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Tailored CV": {
+      "main": [
+        [
+          {
+            "node": "Save to Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Job Tracker": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

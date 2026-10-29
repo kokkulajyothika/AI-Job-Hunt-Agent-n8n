@@ -1,0 +1,1271 @@
+{
+  "name": "AI Job Hunt Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8,
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      },
+      "name": "Every Morning",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        304
+      ],
+      "id": "1907ac65-1369-4818-a13a-b7fe3bf14d5a"
+    },
+    {
+      "parameters": {},
+      "name": "Run Now (test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        496
+      ],
+      "id": "3d796075-1fe0-4ef1-ba37-a7ab9491340e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// SEARCH PLAN – what the agent looks for each run.\n// Edit this list to change searches. Reed = UK job board (needs the \"Reed API\" credential).\n// Remotive = free remote-jobs API (no key; please keep to a few calls per day).\n// LEARN FROM MY FEEDBACK (statuses I set in the Job Tracker)\n// - a company I skipped 2+ times and never applied to is blocked\n// - a search category where I skipped 8+ jobs and applied to none is paused\n// (at least one category always stays active)\nconst POS = [\"applied\", \"interview\", \"offer\"];\nconst byCompany = {}, byCat = {};\nfor (const r of $(\"Read My Feedback\").all().map((i) => i.json).filter((r) => r.job_id)) {\n  const s = String(r.status || \"new\").toLowerCase();\n  if (!POS.includes(s) && s !== \"skipped\") continue;\n  const c = String(r.company || \"\").trim().toLowerCase();\n  const cat = r.search_category || \"\";\n  byCompany[c] = byCompany[c] || { pos: 0, skip: 0 };\n  byCat[cat] = byCat[cat] || { pos: 0, skip: 0 };\n  const k = POS.includes(s) ? \"pos\" : \"skip\";\n  byCompany[c][k]++; byCat[cat][k]++;\n}\nconst blocked_companies = Object.entries(byCompany).filter(([c, v]) => c && v.skip >= 2 && v.pos === 0).map(([c]) => c);\nlet paused_categories = Object.entries(byCat).filter(([c, v]) => c && v.pos === 0 && v.skip >= 8).map(([c]) => c);\n\nconst reed = [\n  { category: \"Graduate AI & data\", keywords: \"artificial intelligence\", graduate: true },\n  { category: \"Graduate AI & data\", keywords: \"machine learning\", graduate: true },\n  { category: \"Graduate AI & data\", keywords: \"junior data analyst\" },\n  { category: \"Graduate AI & data\", keywords: \"AI automation\" },\n  { category: \"Part-time IT\", keywords: \"IT support\", partTime: true, locationName: \"London\", distanceFromLocation: 25 },\n  { category: \"Internship\", keywords: \"data internship\" },\n  { category: \"Internship\", keywords: \"AI internship\" }\n];\nconst remotive = [\n  { category: \"Remote AI & data\", query: \"search=machine%20learning\" },\n  { category: \"Remote AI & data\", query: \"category=data\" }\n];\n\nconst allCats = [...new Set([...reed, ...remotive].map((s) => s.category))];\nif (allCats.every((c) => paused_categories.includes(c))) paused_categories = [];\nconst active = (s) => !paused_categories.includes(s.category);\nconst feedback_note = [\n  blocked_companies.length ? `blocked ${blocked_companies.length} skipped compan${blocked_companies.length > 1 ? \"ies\" : \"y\"}` : \"\",\n  paused_categories.length ? `paused: ${paused_categories.join(\", \")}` : \"\"\n].filter(Boolean).join(\"; \");\n\nconst started_at = Date.now(); // used by the run log to measure how long a run takes\n\nconst qs = (o) => Object.entries(o)\n  .filter(([k, v]) => k !== \"category\" && v !== undefined)\n  .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)\n  .join(\"&\");\n\nreturn [\n  ...reed.filter(active).map((s) => ({ json: {\n    source: \"reed\",\n    started_at, blocked_companies, paused_categories, feedback_note,\n    category: s.category,\n    label: s.keywords,\n    url: `https://www.reed.co.uk/api/1.0/search?${qs(s)}&resultsToTake=25`\n  } })),\n  ...remotive.filter(active).map((s) => ({ json: {\n    source: \"remotive\",\n    started_at, blocked_companies, paused_categories, feedback_note,\n    category: s.category,\n    label: s.query,\n    url: `https://remotive.com/api/remote-jobs?${s.query}&limit=25`\n  } }))\n];\n"
+      },
+      "name": "Search Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        400
+      ],
+      "id": "4d5a6772-2eb5-46d1-8256-4714faaa2741"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "src1",
+              "leftValue": "={{ $json.source }}",
+              "rightValue": "reed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Reed or Remotive?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        400
+      ],
+      "id": "887f3ae7-0607-4568-813c-efeb38e68c7b"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Search Reed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "0cdbc4e0-0ae2-4efe-915e-cb126f39d07c",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "",
+          "name": "Reed API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Search Remotive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        496
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "fb68a2b2-c9d0-4c2b-9743-522e267fc0dc",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        656,
+        400
+      ],
+      "id": "7b96d198-fdda-421a-8d16-8701ed29009e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// NORMALISE & FILTER\n// Turns Reed and Remotive results into one clean list of jobs:\n// - same fields for every job, HTML removed\n// - only jobs posted in the last 14 days\n// - senior / manager roles removed (targeting graduate & junior roles)\n// - Remotive jobs kept only if open to UK / Europe / worldwide applicants\n// - job title must be AI / data / tech related (keyword searches also return\n//   unrelated ads, e.g. sales or healthcare; this saves AI calls)\n// - companies I keep skipping are removed (see Search Plan)\n// - duplicates removed (same job id, or same title + company)\nconst DAYS = 14;\nconst cutoff = Date.now() - DAYS * 24 * 60 * 60 * 1000;\nconst SENIOR = /\\b(senior|snr|sr\\.?|lead|principal|head of|manager|director|staff engineer|architect|vp)\\b/i;\nconst RELEVANT = /\\b(ai|artificial intelligence|machine learning|ml|llm|nlp|data|analyst|analytics|python|automation|software|developer|engineer|it|ict|tech|technology|technical|technician|digital|computer|cloud|helpdesk|help desk|service desk|desktop|network|systems|cyber)\\b/i;\nconst OPEN_TO_UK = /(\\buk\\b|united kingdom|england|europe|emea|worldwide|anywhere|global)/i;\n\nconst strip = (html) => String(html || \"\")\n  .replace(/<[^>]+>/g, \" \")\n  .replace(/&nbsp;/g, \" \").replace(/&amp;/g, \"&\").replace(/&lt;/g, \"<\").replace(/&gt;/g, \">\")\n  .replace(/&#39;|&rsquo;/g, \"'\").replace(/&quot;/g, '\"')\n  .replace(/\\s+/g, \" \").trim();\n\nconst ukDate = (s) => { // Reed dates look like 28/10/2026\n  const m = String(s || \"\").match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);\n  return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`) : null;\n};\nconst money = (min, max) => {\n  if (!min && !max) return \"\";\n  const f = (n) => \"£\" + Math.round(n).toLocaleString(\"en-GB\");\n  return min && max && min !== max ? `${f(min)}–${f(max)}` : f(min || max);\n};\n\nconst jobs = [];\nconst problems = [];\nconst items = $input.all();\n\nitems.forEach((item, i) => {\n  let plan = {};\n  try { plan = $(\"Search Plan\").itemMatching(i).json; } catch (e) { /* pairing not available */ }\n  const r = item.json;\n\n  if (r.error) {\n    problems.push(`${plan.source || \"source\"} search \"${plan.label || \"?\"}\" failed: ${String(r.error.message || r.error).slice(0, 150)}`);\n    return;\n  }\n\n  if (Array.isArray(r.results)) { // Reed\n    for (const j of r.results) {\n      const posted = ukDate(j.date);\n      jobs.push({\n        job_id: `reed-${j.jobId}`,\n        source: \"Reed\",\n        search_category: plan.category || \"\",\n        title: strip(j.jobTitle),\n        company: strip(j.employerName),\n        location: strip(j.locationName),\n        salary: money(j.minimumSalary, j.maximumSalary),\n        url: j.jobUrl || `https://www.reed.co.uk/jobs/${j.jobId}`,\n        posted: posted ? posted.toISOString().slice(0, 10) : \"\",\n        postedMs: posted ? posted.getTime() : Date.now(),\n        snippet: strip(j.jobDescription).slice(0, 1500)\n      });\n    }\n  } else if (Array.isArray(r.jobs)) { // Remotive\n    for (const j of r.jobs) {\n      if (!OPEN_TO_UK.test(j.candidate_required_location || \"\")) continue;\n      const posted = new Date(j.publication_date);\n      jobs.push({\n        job_id: `remotive-${j.id}`,\n        source: \"Remotive\",\n        search_category: plan.category || \"\",\n        title: strip(j.title),\n        company: strip(j.company_name),\n        location: `Remote (${strip(j.candidate_required_location)})`,\n        salary: strip(j.salary),\n        url: j.url,\n        posted: isNaN(posted) ? \"\" : posted.toISOString().slice(0, 10),\n        postedMs: isNaN(posted) ? Date.now() : posted.getTime(),\n        snippet: strip(j.description).slice(0, 1500)\n      });\n    }\n  }\n});\n\nconst blocked = new Set(($(\"Search Plan\").first().json.blocked_companies || []).map((c) => String(c).toLowerCase()));\nconst seen = new Set();\nconst clean = jobs\n  .filter((j) => j.postedMs >= cutoff)\n  .filter((j) => !SENIOR.test(j.title))\n  .filter((j) => RELEVANT.test(j.title))\n  .filter((j) => !blocked.has(String(j.company).trim().toLowerCase()))\n  .sort((a, b) => b.postedMs - a.postedMs)\n  .filter((j) => {\n    const k1 = j.job_id;\n    const k2 = (j.title + \"|\" + j.company).toLowerCase().replace(/\\s+/g, \" \");\n    if (seen.has(k1) || seen.has(k2)) return false;\n    seen.add(k1); seen.add(k2);\n    return true;\n  })\n  .map(({ postedMs, ...j }) => j);\n\nif (problems.length) console.log(\"Search problems:\", problems);\nreturn clean.map((j) => ({ json: j }));\n"
+      },
+      "name": "Normalise & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ],
+      "id": "1b408140-3cd4-4586-b47d-846c2b59ec6c"
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1104,
+        400
+      ],
+      "name": "Skip Jobs Already Seen",
+      "id": "1abd0fe5-f8b7-4765-b6d7-dc782716a86a"
+    },
+    {
+      "parameters": {
+        "maxItems": 10
+      },
+      "name": "Max 10 New Jobs",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        400
+      ],
+      "id": "43b1d1a3-96e1-4ad6-9795-ba06f87fbca5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD MATCH REQUESTS\n// Holds my CV (no phone number or email: they are not needed for matching)\n// and builds one Groq request per job.\nconst CV = \"YOUR NAME\\nAI Engineer Intern | Machine Learning | LLMs & Agentic AI | AI Automation\\nLocation: Your City, UK\\n\\nPROFESSIONAL SUMMARY\\nComputer Science graduate and MSc Artificial Intelligence student at Teesside University who builds practical, explainable LLM applications. Built an AI CV screening assistant and an AI job-hunt agent in n8n that verify every AI evidence quote and calculate scores in code. Strong foundation in Python, machine learning, deep learning, REST APIs and responsible AI.\\n\\nTECHNICAL SKILLS\\nProgramming Languages: Python, JavaScript, Java, SQL, C, C++\\nLLMs & Agentic AI: Large Language Models (LLMs), Generative AI, LangChain, LangGraph, Groq API, Prompt Engineering, Context Engineering, Structured Outputs (JSON Schema), LLM Output Verification, AI Agents (tools + memory)\\nAI Workflow Automation: n8n (Webhooks, Form Trigger, Schedule Trigger, HTTP Request, Code nodes, Data Tables), API integration, error handling and retries\\nAI & Machine Learning: Machine Learning, Deep Learning, Neural Networks, CNNs, Computer Vision, Model Training and Evaluation, TensorFlow, PyTorch, Scikit-learn, OpenCV, YOLO, Faster R-CNN\\nResponsible AI: PII anonymisation, human-in-the-loop design, data minimisation (UK GDPR principles)\\nData & Analytics: Pandas, NumPy, Data Cleaning, Data Preprocessing, Exploratory Data Analysis\\nWeb Development & APIs: REST APIs, JSON, Flask, Node.js, Express.js, React.js, HTML, CSS, Spring Boot\\nDatabases: MySQL, SQL, MongoDB\\nDeveloper Tools: Git, GitHub, Docker, VS Code, Jupyter Notebook, Postman\\n\\nPROJECTS\\n1. AI Job Hunt Agent - n8n, Groq API, Reed & Remotive APIs, JavaScript, n8n Data Tables, AI Agent\\n- Built a scheduled n8n agent that searches the Reed and Remotive job APIs every morning, fetches full adverts and filters out senior, old, irrelevant and duplicate roles.\\n- Used an LLM with strict JSON-schema output to rate each job requirement against my CV with exact quotes; JavaScript verifies every quote and calculates the match score, and flags paid training schemes and senior roles.\\n- Generated tailored CV summaries and cover letters for the top matches, with a safety check that removes any skill not in my CV.\\n- Added a run log, error-alert workflow, dashboard and a chat agent with memory and four tools; moved search into a compact sub-workflow, cutting the agent's token use by about two-thirds.\\n\\n2. AI CV Screening Assistant - n8n, Groq API (gpt-oss-20b), JavaScript, Webhooks, REST APIs, n8n Data Tables, HTML/CSS, Docker\\n- Built an n8n workflow that screens a CV against a job description and returns an evidence-based report, through an animated web form and a JSON webhook API.\\n- Moved scoring out of the LLM: the model rates each requirement as met, partial, not evidenced or lacking, and JavaScript calculates a 0-100 score from a weighted rubric (required 50%, preferred 20%, experience 20%, education 10%).\\n- Added a hallucination check that searches the CV for every AI evidence quote; unverified quotes get half credit and are flagged for the human reviewer.\\n- Anonymised names, emails, phone numbers and links before the CV reaches the LLM, to reduce bias.\\n- Used strict JSON-schema output, temperature 0 and a fixed seed; the same CV scored 82/100 in 3 repeated runs.\\n- Added input validation, 3 retries, clear 400/502 error responses, and a screening history saved to an n8n Data Table.\\n\\nEDUCATION\\nMSc Artificial Intelligence - Teesside University, United Kingdom - January 2026 to January 2028 (expected). Relevant areas: Machine Learning, Deep Learning, Computer Vision, Natural Language Processing, Intelligent Systems and AI Applications.\\nB.Tech in Computer Science and Engineering - Christu Jyothi Institute of Technology and Science, Telangana, India - October 2021 to July 2025. Relevant areas: Programming, Data Structures and Algorithms, Object-Oriented Programming, Database Management Systems and Software Engineering.\\n\\nADDITIONAL INFORMATION\\nAvailability: [your availability].\\nCareer interests: AI Engineering, Machine Learning, Applied AI, LLM Applications, Agentic AI, AI Automation and Computer Vision.\\n\";\nconst SYSTEM = \"You compare ONE job advert with ONE candidate CV for a job-hunting assistant. Be honest and conservative. Fill every field.\\n\\nRules:\\n1. job_requirements: list the 3 to 8 most important requirements stated in the advert (skills, tools, qualifications, experience). Use the advert only. importance = \\\"essential\\\" or \\\"desirable\\\" as the advert says; if unclear, \\\"essential\\\".\\n2. status for each requirement:\\n   - \\\"met\\\" = the CV clearly shows it.\\n   - \\\"partial\\\" = the CV shows something closely related or transferable.\\n   - \\\"not_evidenced\\\" = the CV does not show it.\\n3. evidence = an EXACT quote copied word for word from the CV (a few words up to one sentence) that supports the status. Use \\\"\\\" for not_evidenced. Never invent, paraphrase or combine quotes.\\n4. experience_years_required = years of professional experience the advert asks for. 0 if not stated, graduate, intern or entry level.\\n5. flags: include every one that applies, otherwise an empty list:\\n   - \\\"paid_course_or_training_fee\\\": the advert is really a paid course, bootcamp or \\\"traineeship\\\" where the candidate pays, or a \\\"no experience needed, we train you and place you\\\" recruiter scheme.\\n   - \\\"citizenship_or_clearance_required\\\": the advert requires security clearance, a specific citizenship, or says no visa sponsorship.\\n   - \\\"senior_level\\\": the role is clearly senior, lead or manager level.\\n   - \\\"full_time_hours\\\": the advert says full-time.\\n   - \\\"not_uk_eligible\\\": the job cannot be done from the UK.\\n   - \\\"too_little_information\\\": the advert text is too short to judge properly.\\n6. why_fit: 1 or 2 specific sentences on why the candidate does or does not fit.\\n7. missing: 1 sentence naming the most important gaps, or \\\"\\\" if none.\\nJudge only skills and experience. Never judge the candidate on name, nationality or background.\\n\";\nconst SCHEMA = {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"job_requirements\",\"experience_years_required\",\"flags\",\"why_fit\",\"missing\"],\"properties\":{\"job_requirements\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"requirement\",\"importance\",\"status\",\"evidence\"],\"properties\":{\"requirement\":{\"type\":\"string\"},\"importance\":{\"type\":\"string\",\"enum\":[\"essential\",\"desirable\"]},\"status\":{\"type\":\"string\",\"enum\":[\"met\",\"partial\",\"not_evidenced\"]},\"evidence\":{\"type\":\"string\"}}}},\"experience_years_required\":{\"type\":\"integer\"},\"flags\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"paid_course_or_training_fee\",\"citizenship_or_clearance_required\",\"senior_level\",\"full_time_hours\",\"not_uk_eligible\",\"too_little_information\"]}},\"why_fit\":{\"type\":\"string\"},\"missing\":{\"type\":\"string\"}}};\n\nreturn $input.all().map((item) => {\n  const j = item.json;\n  const user = \"JOB TITLE: \" + j.title + \"\\nCOMPANY: \" + j.company + \"\\nLOCATION: \" + j.location +\n    \"\\nSALARY: \" + (j.salary || \"not stated\") + \"\\n\\nJOB ADVERT (may be shortened):\\n\" + j.snippet +\n    \"\\n\\nCANDIDATE CV:\\n\" + CV;\n  return { json: { ...j, cv_text: CV, groqBody: {\n    model: \"openai/gpt-oss-20b\", temperature: 0, seed: 42, reasoning_effort: \"low\", max_completion_tokens: 3000,\n    response_format: { type: \"json_schema\", json_schema: { name: \"job_match\", strict: true, schema: SCHEMA } },\n    messages: [{ role: \"system\", content: SYSTEM }, { role: \"user\", content: user }]\n  } } };\n});\n"
+      },
+      "name": "Build Match Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        400
+      ],
+      "id": "82e29123-cfec-428a-8345-889e3e63ca95"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.groqBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 30000
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "name": "Ask Groq: Match",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "95c4bb7a-601f-4fe8-b12f-4e21d750598a",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// SCORE MATCHES\n// The AI only rates each requirement. The match score is calculated HERE, in code:\n// - essential requirement = weight 2, desirable = weight 1\n// - met = full credit, partial = half, not evidenced = none\n// - every evidence quote is searched for in the CV: not found = half credit (possible hallucination)\n// - \"met\" with no quote gets no credit\n// - minus 10 if the ad asks for 2 years' experience, minus 20 for 3+ years, minus 35 for a senior role\n// - minus 20 if the minimum salary is £60k+ (these roles almost always need years of experience)\n// - code double-checks for paid-training / \"no experience needed\" recruiter schemes (the AI can miss them)\n// Then the top 3 good matches (score 55+, no red flags) are marked for a tailored CV + cover letter.\nconst norm = (s) => String(s || \"\").toLowerCase().replace(/[^a-z0-9+#%.]+/g, \" \").trim();\nconst LABEL = {\n  paid_course_or_training_fee: \"⚠️ Possible paid course / training scheme\",\n  citizenship_or_clearance_required: \"⚠️ Needs citizenship or security clearance\",\n  senior_level: \"Senior level\",\n  full_time_hours: \"Full-time hours\",\n  not_uk_eligible: \"⚠️ Not open to UK\",\n  too_little_information: \"Short advert – check the full ad\"\n};\nconst COURSE = /no experience (is )?(needed|required|necessary)|we('| wi)ll train you|fully funded training|funded course|career chang|traineeship|course fee|training provider|get (you )?certified|kick-?start your career in/i;\nconst RED = [\"paid_course_or_training_fee\", \"citizenship_or_clearance_required\", \"not_uk_eligible\"];\n\nconst scored = [];\nconst failed = [];\n$input.all().forEach((item, i) => {\n  const job = $(\"Build Match Requests\").itemMatching(i).json;\n  const cv = norm(job.cv_text);\n  let r;\n  try {\n    r = JSON.parse(item.json.choices[0].message.content);\n    if (!Array.isArray(r.job_requirements) || !r.job_requirements.length) throw new Error(\"no requirements returned\");\n  } catch (e) {\n    // Not saved, so the job is tried again on the next run.\n    failed.push(`${job.title} (${job.company}): ${String(item.json.error?.message || e.message).slice(0, 150)}`);\n    return;\n  }\n\n  let got = 0, max = 0, unverified = 0;\n  const met = [], partial = [], notShown = [];\n  for (const q of r.job_requirements) {\n    const w = q.importance === \"essential\" ? 2 : 1;\n    max += w;\n    let c = q.status === \"met\" ? 1 : q.status === \"partial\" ? 0.5 : 0;\n    const ev = norm(q.evidence);\n    if (c > 0 && !ev) c = 0;\n    else if (c > 0 && !cv.includes(ev)) { c /= 2; unverified++; }\n    got += w * c;\n    (q.status === \"met\" ? met : q.status === \"partial\" ? partial : notShown).push(q.requirement);\n  }\n  const yrs = r.experience_years_required || 0;\n  const flags = [...new Set(r.flags || [])];\n  const text = job.title + \" \" + job.snippet;\n  // v4 (from the accuracy test): any \"trainee\" title from a recruiter / training company is treated as a possible paid scheme\n  const recruiterTrainee = /\\btrainee\\b/i.test(job.title) && /recruit|training|academy|career/i.test(job.company);\n  // v4: sales / recruitment roles are not technical roles, whatever the AI rating says\n  const offTarget = /\\b(recruitment consultant|recruiter|sales (executive|consultant|representative|manager)|business development)\\b/i.test(job.title);\n  if ((COURSE.test(text) || recruiterTrainee) && !flags.includes(\"paid_course_or_training_fee\")) flags.push(\"paid_course_or_training_fee\");\n  let penalty = yrs >= 3 ? 20 : yrs === 2 ? 10 : 0;\n  if (flags.includes(\"senior_level\")) penalty = Math.max(penalty, 35);\n  const minSalary = Number(String(job.salary || \"\").replace(/,/g, \"\").match(/£(\\d+)/)?.[1] || 0);\n  const highSalary = minSalary >= 60000;\n  if (highSalary) penalty += 20;\n  const score = Math.max(0, Math.min(100, Math.round((100 * got) / max - penalty)));\n  const red = flags.some((f) => RED.includes(f));\n  // v4: senior and non-technical roles can never be better than Weak\n  const fit = red ? \"Red flag\" : (flags.includes(\"senior_level\") || offTarget) ? \"Weak\" : score >= 70 ? \"Strong\" : score >= 45 ? \"Possible\" : \"Weak\";\n\n  const flagText = flags.map((f) => LABEL[f] || f);\n  if (highSalary) flagText.push(\"High salary – usually needs years of experience\");\n  if (yrs > 0) flagText.push(`Asks for ${yrs}+ years' experience`);\n  if (offTarget) flagText.push(\"Not a technical role\");\n  if (unverified) flagText.push(`${unverified} AI quote(s) not found in CV (half credit)`);\n\n  scored.push({\n    job_id: job.job_id, title: job.title, company: job.company, location: job.location, salary: job.salary,\n    source: job.source, search_category: job.search_category, url: job.url, posted: job.posted,\n    snippet: job.snippet,\n    match_score: score, fit,\n    why_fit: [r.why_fit, met.length ? \"Met: \" + met.join(\", \") : \"\", partial.length ? \"Partly: \" + partial.join(\", \") : \"\"].filter(Boolean).join(\" | \").slice(0, 1500),\n    missing: [r.missing, notShown.length ? \"Not shown in CV: \" + notShown.join(\", \") : \"\"].filter(Boolean).join(\" | \").slice(0, 1000),\n    flags: flagText.join(\"; \"),\n    status: \"new\", cover_letter: \"\", tailored_cv: \"\", tailor: false, red\n  });\n});\n\nscored.sort((a, b) => b.match_score - a.match_score);\nscored.filter((j) => j.match_score >= 55 && !j.red && j.fit !== \"Weak\").slice(0, 3).forEach((j) => { j.tailor = true; });\nif (failed.length) console.log(\"Not scored this run (will retry next run):\", failed);\nreturn scored.map(({ red, ...j }) => ({ json: j }));\n"
+      },
+      "name": "Score Matches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        400
+      ],
+      "id": "f3d5d748-1efd-44f0-a359-ca6e7157ff38"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "t1",
+              "leftValue": "={{ $json.tailor }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Top Match?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3072,
+        400
+      ],
+      "id": "8c729f0f-6a0f-4e28-a3ab-9ab355d25b2e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD TAILORING REQUESTS\n// Only for the top matches: asks Groq for a tailored CV summary, skills order,\n// reworded project bullets, ATS keywords and a cover letter, using CV facts only.\nconst CV = $(\"Build Match Requests\").first().json.cv_text;\nconst SYSTEM = \"You help a candidate tailor her CV and write a cover letter for ONE job advert, so it passes ATS keyword screening AND stays 100% truthful. Fill every field.\\n\\nSTRICT HONESTY RULES:\\n- Use ONLY facts written in the CV. Never add skills, tools, employers, years of experience, grades, results or achievements that are not in the CV.\\n- You MAY reorder, shorten and reword CV content, and use the advert's own wording when it describes the same thing the CV shows (for example, the CV says \\\"REST APIs\\\" and the advert says \\\"API integration\\\").\\n- If the advert asks for something the CV does not show, put it in ats_keywords_missing. Never put it anywhere else.\\n\\nFields:\\n- tailored_summary: 2 or 3 sentences (max 60 words) for the top of the CV, aimed at this job, using only CV facts. Write in standard CV style without 'I', 'my' or 'me' (for example: 'MSc Artificial Intelligence student who builds ...'). Do not name the company or the recruiter. Avoid filler words such as passionate, eager or hard-working. Never claim abilities the CV does not show, such as 'proven ability', production deployment, stakeholder work or translating business requirements.\\n- top_skills: 8 to 12 skills copied exactly as written in the CV, most relevant to this advert first.\\n- highlight_bullets: 3 or 4 project bullets from the CV, reworded to match the advert's language, with no new facts.\\n- ats_keywords_matched: keywords from the advert that the CV genuinely shows.\\n- ats_keywords_missing: keywords from the advert that the CV does not show.\\n- cover_letter: 170 to 230 words. Start with \\\"Dear Hiring Manager,\\\". Mention the job title and company. Use 2 or 3 specific CV facts that match the advert. Friendly, professional UK English. Do not mention visa status. Do NOT write a sign-off or name at the end; it is added automatically.\\n\";\nconst SCHEMA = {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"tailored_summary\",\"top_skills\",\"highlight_bullets\",\"ats_keywords_matched\",\"ats_keywords_missing\",\"cover_letter\"],\"properties\":{\"tailored_summary\":{\"type\":\"string\"},\"top_skills\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"highlight_bullets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"ats_keywords_matched\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"ats_keywords_missing\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"cover_letter\":{\"type\":\"string\"}}};\n\nreturn $input.all().map((item) => {\n  const j = item.json;\n  const user = \"JOB TITLE: \" + j.title + \"\\nCOMPANY: \" + j.company + \"\\nLOCATION: \" + j.location +\n    \"\\n\\nJOB ADVERT (may be shortened):\\n\" + j.snippet + \"\\n\\nCANDIDATE CV:\\n\" + CV;\n  return { json: { ...j, groqBody: {\n    model: \"openai/gpt-oss-20b\", temperature: 0.3, seed: 42, reasoning_effort: \"low\", max_completion_tokens: 4000,\n    response_format: { type: \"json_schema\", json_schema: { name: \"cv_tailoring\", strict: true, schema: SCHEMA } },\n    messages: [{ role: \"system\", content: SYSTEM }, { role: \"user\", content: user }]\n  } } };\n});\n"
+      },
+      "name": "Build Tailoring Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3296,
+        240
+      ],
+      "id": "00d1257f-44e1-40ee-bc14-2a8606108b74"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.groqBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 30000
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "name": "Ask Groq: Tailor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "9de0b420-7e60-4f57-9ec6-99434e0637bc",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD TAILORED CV & COVER LETTER\n// Safety checks in code:\n// - every \"top skill\" must appear in my real CV, otherwise it is removed (no invented skills)\n// - any email address the AI writes is removed; my real contact details are added by code\nconst norm = (s) => String(s || \"\").toLowerCase().replace(/[^a-z0-9+#%.]+/g, \" \").trim();\nconst CV = norm($(\"Build Match Requests\").first().json.cv_text);\nconst SIGN_OFF = \"\\n\\nKind regards,\\nYour Name\\you@example.com | linkedin.com/in/your-profile | github.com/your-username\";\n\nreturn $input.all().map((item, i) => {\n  const job = $(\"Build Tailoring Requests\").itemMatching(i).json;\n  const { groqBody, snippet, tailor, ...row } = job;\n  let t;\n  try { t = JSON.parse(item.json.choices[0].message.content); }\n  catch (e) {\n    return { json: { ...row, flags: [row.flags, \"Tailoring failed: \" + String(item.json.error?.message || e.message).slice(0, 120)].filter(Boolean).join(\"; \") } };\n  }\n  const skills = (t.top_skills || []).filter((s) => CV.includes(norm(s)));\n  const dropped = (t.top_skills || []).filter((s) => !CV.includes(norm(s)));\n  const tailored = [\n    \"PROFESSIONAL SUMMARY (tailored)\",\n    t.tailored_summary,\n    \"\",\n    \"KEY SKILLS (put these first)\",\n    skills.join(\" · \"),\n    \"\",\n    \"PROJECT BULLETS TO USE\",\n    ...(t.highlight_bullets || []).map((b) => \"- \" + b),\n    \"\",\n    \"ATS KEYWORDS YOU GENUINELY MATCH: \" + (t.ats_keywords_matched || []).join(\", \"),\n    \"IN THE AD BUT NOT IN YOUR CV (do NOT add unless true): \" + (t.ats_keywords_missing || []).join(\", \"),\n    dropped.length ? \"Removed by safety check (not in your CV): \" + dropped.join(\", \") : \"\"\n  ].join(\"\\n\").trim();\n  const letter = String(t.cover_letter || \"\").replace(/[\\w.+-]+@[\\w-]+\\.[\\w.]+/g, \"\").trim() + SIGN_OFF;\n  return { json: { ...row, tailored_cv: tailored, cover_letter: letter } };\n});\n"
+      },
+      "name": "Tailored CV & Cover Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3744,
+        240
+      ],
+      "id": "613a8566-8904-43bb-87d5-ab11df04f43b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// PREPARE ROW – keeps only the Job Tracker columns\nconst COLS = [\"job_id\", \"title\", \"company\", \"location\", \"salary\", \"source\", \"search_category\", \"url\", \"posted\",\n  \"match_score\", \"fit\", \"why_fit\", \"missing\", \"flags\", \"tailored_cv\", \"cover_letter\", \"status\"];\nreturn $input.all().map((item) => ({ json: Object.fromEntries(COLS.map((c) => [c, item.json[c] ?? (c === \"match_score\" ? 0 : \"\")])) }));\n"
+      },
+      "name": "Prepare Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4176,
+        400
+      ],
+      "id": "f3ba758a-e8ae-4165-b4b1-dff83a04e4ee"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "salary",
+              "displayName": "salary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "search_category",
+              "displayName": "search_category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "posted",
+              "displayName": "posted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "fit",
+              "displayName": "fit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "why_fit",
+              "displayName": "why_fit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "missing",
+              "displayName": "missing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "flags",
+              "displayName": "flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "tailored_cv",
+              "displayName": "tailored_cv",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "cover_letter",
+              "displayName": "cover_letter",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "match_score",
+              "displayName": "match_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save to Job Tracker",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4400,
+        400
+      ],
+      "id": "632d6c5d-0400-45dc-b846-24d2e12b9456"
+    },
+    {
+      "parameters": {
+        "content": "## 1 · Find jobs\nEvery morning at 8:05 (UK): 7 Reed searches + 2 Remotive searches, merged into one clean list. Unrelated, senior, old and duplicate ads are removed. Jobs already in the Job Tracker are skipped.",
+        "height": 180,
+        "width": 1460,
+        "color": 7
+      },
+      "name": "Note -60",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        80
+      ],
+      "id": "cde22d67-fb57-45b8-b814-3297e619498c"
+    },
+    {
+      "parameters": {
+        "content": "## 2 · Read the full advert\nReed's search gives only a preview, so the full advert is fetched for each new Reed job (max 10 per run).",
+        "height": 180,
+        "width": 900,
+        "color": 5
+      },
+      "name": "Note 1480",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        80
+      ],
+      "id": "e8e3a2cc-fe94-4725-8706-93ddd333be15"
+    },
+    {
+      "parameters": {
+        "content": "## 3 · AI match score (Groq)\nThe AI rates each requirement with an exact CV quote. **Code** checks the quotes and calculates the score, with penalties for senior roles and warning flags for paid training schemes.",
+        "height": 180,
+        "width": 900,
+        "color": 4
+      },
+      "name": "Note 2400",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2176,
+        80
+      ],
+      "id": "9ec37469-15c6-4baf-a6e6-6da7f13d9303"
+    },
+    {
+      "parameters": {
+        "content": "## 4 · Tailored CV + cover letter\nTop 3 matches (55+, no red flags). A safety check removes any skill that is not in the real CV.",
+        "width": 900,
+        "color": 6
+      },
+      "name": "Note 3300",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3072,
+        32
+      ],
+      "id": "16423638-3990-4c35-a075-6120ea4551dd"
+    },
+    {
+      "parameters": {
+        "content": "## 5 · Save + monitor\nResults go to the Job Tracker table; every run writes a health row to the Run Log table. Crashes are logged by the 'Job Agent – Error Alert' workflow.",
+        "height": 180,
+        "width": 1060,
+        "color": 3
+      },
+      "name": "Note 4200",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3984,
+        80
+      ],
+      "id": "d2852d84-393a-472d-a8a0-3a79e448cebe"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "FromReed",
+              "leftValue": "={{ $json.source }}",
+              "rightValue": "Reed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "From Reed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1536,
+        400
+      ],
+      "id": "af0ef90c-0275-4629-9fa8-fcc6afd44643"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.reed.co.uk/api/1.0/jobs/' + $json.job_id.replace('reed-', '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "name": "Get Full Reed Advert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "fce7c57d-8d73-4571-b811-41d570822e41",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "",
+          "name": "Reed API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ADD FULL ADVERT\n// Reed's search only returns a short preview of each advert. This swaps it for the\n// full advert from Reed's job-details API (when that call worked), plus contract details,\n// so the AI scores the real requirements instead of a teaser.\nconst strip = (html) => String(html || \"\")\n  .replace(/<[^>]+>/g, \" \")\n  .replace(/&nbsp;/g, \" \").replace(/&amp;/g, \"&\").replace(/&lt;/g, \"<\").replace(/&gt;/g, \">\")\n  .replace(/&#39;|&rsquo;/g, \"'\").replace(/&quot;/g, '\"')\n  .replace(/\\s+/g, \" \").trim();\n\nreturn $input.all().map((item, i) => {\n  const job = $(\"Max 10 New Jobs\").itemMatching(i).json;\n  const d = item.json;\n  if (d.error || !d.jobDescription) return { json: { ...job, full_advert: false } };\n  const extra = [\n    d.contractType ? \"Contract: \" + d.contractType : \"\",\n    d.fullTime ? \"Full-time\" : \"\",\n    d.partTime ? \"Part-time\" : \"\",\n    d.expirationDate ? \"Closes: \" + d.expirationDate : \"\"\n  ].filter(Boolean).join(\" | \");\n  return { json: { ...job, snippet: (extra ? extra + \"\\n\" : \"\") + strip(d.jobDescription).slice(0, 4000), full_advert: true } };\n});\n"
+      },
+      "name": "Add Full Advert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        304
+      ],
+      "id": "bfc6f27c-cf66-46b1-8600-646495a6878f"
+    },
+    {
+      "parameters": {},
+      "name": "All Jobs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2192,
+        400
+      ],
+      "id": "a7ebeefd-dcc2-40a4-a28d-0b7d40c5c480"
+    },
+    {
+      "parameters": {},
+      "name": "All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3952,
+        400
+      ],
+      "id": "68e863ee-384b-4fdf-865d-b107bd8f10e6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// WRITE RUN LOG – one row per run, so you can see the agent is healthy\n// (jobs found, AI calls, failures, tokens used, time taken).\nconst safe = (name) => { try { return $(name).all(); } catch (e) { return []; } };\nconst started = $(\"Search Plan\").first().json.started_at;\nconst rows = safe(\"Prepare Row\").map((i) => i.json);\nconst sent = safe(\"Build Match Requests\").length;\nconst scored = safe(\"Score Matches\").length;\nconst tokens = [...safe(\"Ask Groq: Match\"), ...safe(\"Ask Groq: Tailor\")]\n  .reduce((sum, i) => sum + (i.json.usage?.total_tokens || 0), 0);\nconst searchErrors = [...safe(\"Search Reed\"), ...safe(\"Search Remotive\")].filter((i) => i.json.error).length;\nconst advertErrors = safe(\"Add Full Advert\").filter((i) => !i.json.full_advert).length;\nconst tailorFailed = rows.filter((r) => /Tailoring failed/.test(r.flags)).length;\nconst notes = [\n  $(\"Search Plan\").first().json.feedback_note ? \"learned from feedback: \" + $(\"Search Plan\").first().json.feedback_note : \"\",\n  searchErrors ? `${searchErrors} search call(s) failed` : \"\",\n  advertErrors ? `${advertErrors} full advert(s) not available, preview used` : \"\",\n  sent - scored ? `${sent - scored} job(s) not scored, will retry next run` : \"\",\n  tailorFailed ? `${tailorFailed} tailoring call(s) failed` : \"\"\n].filter(Boolean).join(\"; \");\n\nreturn [{ json: {\n  run_at: new Date().toLocaleString(\"en-GB\", { timeZone: \"Europe/London\" }),\n  trigger: $execution.mode,\n  status: notes ? \"OK with warnings\" : \"OK\",\n  jobs_found: safe(\"Normalise & Filter\").length,\n  new_jobs: safe(\"Skip Jobs Already Seen\").length,\n  full_adverts: safe(\"Add Full Advert\").filter((i) => i.json.full_advert).length,\n  ai_scored: scored,\n  ai_failed: sent - scored,\n  strong_matches: rows.filter((r) => r.fit === \"Strong\").length,\n  red_flags: rows.filter((r) => r.fit === \"Red flag\").length,\n  tailored: rows.filter((r) => r.tailored_cv).length,\n  ai_tokens: tokens,\n  duration_sec: Math.round((Date.now() - started) / 1000),\n  notes\n} }];\n"
+      },
+      "name": "Write Run Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4624,
+        400
+      ],
+      "id": "1f8930bc-03ac-48be-9ed2-91449c3c9136"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_at",
+              "displayName": "run_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "trigger",
+              "displayName": "trigger",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "jobs_found",
+              "displayName": "jobs_found",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "new_jobs",
+              "displayName": "new_jobs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "full_adverts",
+              "displayName": "full_adverts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_scored",
+              "displayName": "ai_scored",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_failed",
+              "displayName": "ai_failed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "strong_matches",
+              "displayName": "strong_matches",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "red_flags",
+              "displayName": "red_flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "tailored",
+              "displayName": "tailored",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_tokens",
+              "displayName": "ai_tokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "duration_sec",
+              "displayName": "duration_sec",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save Run Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4832,
+        400
+      ],
+      "id": "6a37dacf-d5ae-4445-a916-bc41f93ca835"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "returnAll": true
+      },
+      "name": "Read My Feedback",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        240
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "id": "f16de654-5eb3-4c4f-8d94-eced274452f8"
+    }
+  ],
+  "connections": {
+    "Every Morning": {
+      "main": [
+        [
+          {
+            "node": "Read My Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Now (test)": {
+      "main": [
+        [
+          {
+            "node": "Read My Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Plan": {
+      "main": [
+        [
+          {
+            "node": "Reed or Remotive?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reed or Remotive?": {
+      "main": [
+        [
+          {
+            "node": "Search Reed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Remotive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Reed": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Remotive": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Results": {
+      "main": [
+        [
+          {
+            "node": "Normalise & Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise & Filter": {
+      "main": [
+        [
+          {
+            "node": "Skip Jobs Already Seen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Jobs Already Seen": {
+      "main": [
+        [
+          {
+            "node": "Max 10 New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Max 10 New Jobs": {
+      "main": [
+        [
+          {
+            "node": "From Reed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Reed?": {
+      "main": [
+        [
+          {
+            "node": "Get Full Reed Advert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "All Jobs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Full Reed Advert": {
+      "main": [
+        [
+          {
+            "node": "Add Full Advert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Full Advert": {
+      "main": [
+        [
+          {
+            "node": "All Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Jobs": {
+      "main": [
+        [
+          {
+            "node": "Build Match Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Match Requests": {
+      "main": [
+        [
+          {
+            "node": "Ask Groq: Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Groq: Match": {
+      "main": [
+        [
+          {
+            "node": "Score Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Matches": {
+      "main": [
+        [
+          {
+            "node": "Top Match?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top Match?": {
+      "main": [
+        [
+          {
+            "node": "Build Tailoring Requests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "All Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Build Tailoring Requests": {
+      "main": [
+        [
+          {
+            "node": "Ask Groq: Tailor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Groq: Tailor": {
+      "main": [
+        [
+          {
+            "node": "Tailored CV & Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tailored CV & Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Results": {
+      "main": [
+        [
+          {
+            "node": "Prepare Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Row": {
+      "main": [
+        [
+          {
+            "node": "Save to Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Job Tracker": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Run Log": {
+      "main": [
+        [
+          {
+            "node": "Save Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read My Feedback": {
+      "main": [
+        [
+          {
+            "node": "Search Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,478 @@
+{
+  "name": "Job Agent - Interview Prep",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Agent – Interview Prep\nEvery 30 minutes: finds jobs whose **status is \"interview\"** and that have no prep yet, reads the full advert, and writes an interview pack into the **interview_prep** column: one-minute pitch, 8 likely questions with answer outlines (each CV quote checked in code), topics to revise, questions to ask, research checklist.",
+        "height": 180,
+        "width": 1100,
+        "color": 6
+      },
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -96
+      ],
+      "id": "39612d5f-6fb0-4b58-b1ec-a70dcecbb2bb"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -128,
+        128
+      ],
+      "id": "747c0444-fc3a-4d07-92f9-7d3eab2dacd5"
+    },
+    {
+      "parameters": {},
+      "name": "Run Now (test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        304
+      ],
+      "id": "ea912297-0e0d-4366-8e22-7fcc31a8e78c"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "keyValue": "interview"
+            },
+            {
+              "keyName": "interview_prep",
+              "condition": "isEmpty"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "name": "Find Interview Jobs",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        208
+      ],
+      "id": "a0a0d03f-9a98-43cd-9bd5-2e16f2947f95"
+    },
+    {
+      "parameters": {
+        "maxItems": 3
+      },
+      "name": "Max 3 Per Run",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        320,
+        208
+      ],
+      "id": "50d48bf8-57f5-483f-a759-c9717a46c201"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "isReed",
+              "leftValue": "={{ $json.job_id }}",
+              "rightValue": "reed-",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Reed Job?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        208
+      ],
+      "id": "499da1d8-68c9-4b9e-8f7a-275f7a311e01"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.reed.co.uk/api/1.0/jobs/' + $json.job_id.replace('reed-', '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Get Full Reed Advert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        752,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "9e718def-b756-4b63-9e7f-adf62379b294",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "",
+          "name": "Reed API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ADD FULL ADVERT – keeps the Job Tracker row and adds the full Reed advert text\nreturn $input.all().map((item, i) => {\n  const row = $(\"Max 3 Per Run\").itemMatching(i).json;\n  return { json: { ...row, jobDescription: item.json.error ? \"\" : (item.json.jobDescription || \"\") } };\n});\n"
+      },
+      "name": "Add Advert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        112
+      ],
+      "id": "7f4b74c4-2cf4-426d-867f-ea17ff7a7953"
+    },
+    {
+      "parameters": {},
+      "name": "All Interview Jobs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        208
+      ],
+      "id": "93a101b7-31c3-4b72-9a72-61744ed1f21e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD PREP REQUESTS\n// For each job marked \"interview\": job advert (full Reed advert when available,\n// otherwise the saved match notes) + my CV -> one Groq request.\nconst CV = \"YOUR NAME\\nAI Engineer Intern | Machine Learning | LLMs & Agentic AI | AI Automation\\nLocation: Your City, UK\\n\\nPROFESSIONAL SUMMARY\\nComputer Science graduate and MSc Artificial Intelligence student at Teesside University who builds practical, explainable LLM applications. Built an AI CV screening assistant in n8n that checks every AI evidence quote against the CV and calculates scores in code. Currently building an AI job-hunt agent that collects UK job ads from two APIs and ranks them against a CV. Strong foundation in Python, machine learning, deep learning, REST APIs and responsible AI.\\n\\nTECHNICAL SKILLS\\nProgramming Languages: Python, JavaScript, Java, SQL, C, C++\\nLLMs & Agentic AI: Large Language Models (LLMs), Generative AI, LangChain, LangGraph, Groq API, Prompt Engineering, Context Engineering, Structured Outputs (JSON Schema), LLM Output Verification\\nAI Workflow Automation: n8n (Webhooks, Form Trigger, Schedule Trigger, HTTP Request, Code nodes, Data Tables), API integration, error handling and retries\\nAI & Machine Learning: Machine Learning, Deep Learning, Neural Networks, CNNs, Computer Vision, Model Training and Evaluation, TensorFlow, PyTorch, Scikit-learn, OpenCV, YOLO, Faster R-CNN\\nResponsible AI: PII anonymisation, human-in-the-loop design, data minimisation (UK GDPR principles)\\nData & Analytics: Pandas, NumPy, Data Cleaning, Data Preprocessing, Exploratory Data Analysis\\nWeb Development & APIs: REST APIs, JSON, Flask, Node.js, Express.js, React.js, HTML, CSS, Spring Boot\\nDatabases: MySQL, SQL, MongoDB\\nDeveloper Tools: Git, GitHub, Docker, VS Code, Jupyter Notebook, Postman\\n\\nPROJECTS\\n1. AI Job Hunt Agent (Ongoing) - n8n, Groq API, Reed Jobs API, Remotive API, JavaScript, n8n Data Tables, Docker\\n- Building a scheduled n8n agent that runs every morning, runs 9 searches across the Reed and Remotive job APIs, and collects graduate, junior, internship and part-time roles in AI, data and IT.\\n- Wrote JavaScript to merge both APIs into one format, remove senior roles and ads older than 14 days, keep only UK-eligible remote jobs, and remove duplicates; the first live run returned 41 relevant jobs.\\n- Added Basic Auth credentials, request batching to respect API rate limits, and 3 automatic retries per request.\\n- Stores jobs in an n8n Data Table and skips jobs already seen, so each run processes only new ads.\\n\\n2. AI CV Screening Assistant - n8n, Groq API (gpt-oss-20b), JavaScript, Webhooks, REST APIs, n8n Data Tables, HTML/CSS, Docker\\n- Built an n8n workflow that screens a CV against a job description and returns an evidence-based report, through an animated web form and a JSON webhook API.\\n- Moved scoring out of the LLM: the model rates each requirement as met, partial, not evidenced or lacking, and JavaScript calculates a 0-100 score from a weighted rubric (required 50%, preferred 20%, experience 20%, education 10%).\\n- Added a hallucination check that searches the CV for every AI evidence quote; unverified quotes get half credit and are flagged for the human reviewer.\\n- Anonymised names, emails, phone numbers and links before the CV reaches the LLM, to reduce bias.\\n- Used strict JSON-schema output, temperature 0 and a fixed seed; the same CV scored 82/100 in 3 repeated runs.\\n- Added input validation, 3 retries, clear 400/502 error responses, and a screening history saved to an n8n Data Table.\\n\\nEDUCATION\\nMSc Artificial Intelligence - Teesside University, United Kingdom - January 2026 to January 2028 (expected). Relevant areas: Machine Learning, Deep Learning, Computer Vision, Natural Language Processing, Intelligent Systems and AI Applications.\\nB.Tech in Computer Science and Engineering - Christu Jyothi Institute of Technology and Science, Telangana, India - October 2021 to July 2025. Relevant areas: Programming, Data Structures and Algorithms, Object-Oriented Programming, Database Management Systems and Software Engineering.\\n\\nADDITIONAL INFORMATION\\nAvailability: [your availability].\\nCareer interests: AI Engineering, Machine Learning, Applied AI, LLM Applications, Agentic AI, AI Automation and Computer Vision.\\n\";\nconst SYSTEM = \"You prepare a candidate for ONE job interview. Be practical, honest and specific. Fill every field.\\n\\nSTRICT HONESTY RULES:\\n- Answer outlines may only use facts written in the CV. Never invent employers, years of experience, grades, results or tools she has not used.\\n- Do NOT add any detail the CV does not state: no numbers, durations (\\\"two weeks\\\"), outcomes (\\\"reduced errors to zero\\\"), techniques (e.g. \\\"exponential back-off\\\", \\\"unique constraints\\\") or tools. Describe what the CV says, in her words.\\n- Her projects were built with n8n, JavaScript and the Groq API. Do not say they used Python or SQL.\\n- Where a good answer needs a personal story the CV does not contain, write \\\"[add your own example]\\\" instead of inventing one.\\n- If the job needs something the CV does not show, the answer outline must say how to answer honestly (what she has done that is closest, and what she is learning), not pretend.\\n- cv_evidence must be an EXACT quote copied word for word from the CV that supports the answer, or \\\"\\\" if there is none.\\n- Never state facts about the company that are not in the job advert. Put things she should look up in research_checklist instead.\\n\\nFields:\\n- likely_questions: 8 questions this employer is likely to ask (mix of technical, project and behavioural), each with:\\n  - question\\n  - why_they_ask: one short sentence\\n  - answer_outline: 2-4 short bullet-style sentences, STAR format for behavioural questions\\n  - cv_evidence: exact CV quote or \\\"\\\"\\n- topics_to_revise: 4-6 technical topics from the advert she should revise before the interview, most important first.\\n- questions_to_ask_them: 4 thoughtful questions she can ask the interviewer.\\n- research_checklist: 3-5 things to look up about the company or role before the interview.\\n- one_minute_pitch: a 90-120 word \\\"tell me about yourself\\\" answer aimed at this job, using only CV facts, UK English.\\n\";\nconst SCHEMA = {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"likely_questions\",\"topics_to_revise\",\"questions_to_ask_them\",\"research_checklist\",\"one_minute_pitch\"],\"properties\":{\"likely_questions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"question\",\"why_they_ask\",\"answer_outline\",\"cv_evidence\"],\"properties\":{\"question\":{\"type\":\"string\"},\"why_they_ask\":{\"type\":\"string\"},\"answer_outline\":{\"type\":\"string\"},\"cv_evidence\":{\"type\":\"string\"}}}},\"topics_to_revise\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"questions_to_ask_them\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"research_checklist\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"one_minute_pitch\":{\"type\":\"string\"}}};\nconst strip = (html) => String(html || \"\").replace(/<[^>]+>/g, \" \").replace(/&nbsp;/g, \" \").replace(/&amp;/g, \"&\")\n  .replace(/&#39;|&rsquo;/g, \"'\").replace(/&quot;/g, '\"').replace(/\\s+/g, \" \").trim();\n\nreturn $input.all().map((item) => {\n  const j = item.json;\n  const advert = j.jobDescription\n    ? strip(j.jobDescription).slice(0, 5000)\n    : \"Full advert not available. Saved notes: \" + [j.why_fit, j.missing, j.flags].filter(Boolean).join(\" | \");\n  const job = j.row || j;\n  const user = \"JOB TITLE: \" + job.title + \"\\nCOMPANY: \" + job.company + \"\\nLOCATION: \" + job.location +\n    \"\\n\\nJOB ADVERT:\\n\" + advert + \"\\n\\nCANDIDATE CV:\\n\" + CV;\n  return { json: { row_id: job.id, job_id: job.job_id, title: job.title, company: job.company, cv_text: CV, groqBody: {\n    model: \"openai/gpt-oss-20b\", temperature: 0.2, seed: 42, reasoning_effort: \"low\", max_completion_tokens: 5000,\n    response_format: { type: \"json_schema\", json_schema: { name: \"interview_prep\", strict: true, schema: SCHEMA } },\n    messages: [{ role: \"system\", content: SYSTEM }, { role: \"user\", content: user }]\n  } } };\n});\n"
+      },
+      "name": "Build Prep Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        208
+      ],
+      "id": "dd4ddeb3-0ab5-4541-ba84-29180c21ba5c"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.groqBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 30000
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "name": "Ask Groq: Interview Prep",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1632,
+        208
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "549f6a8e-aeed-4016-b791-c7a5e994d52a",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FORMAT INTERVIEW PREP\n// Turns the AI's answer into readable text and checks every CV quote really\n// appears in the CV (quotes that don't are marked \"check this\"), and flags any number\n// in an answer outline that does not appear in the CV (a sign of an invented detail).\nconst norm = (s) => String(s || \"\").toLowerCase().replace(/[^a-z0-9+#%.]+/g, \" \").trim();\nreturn $input.all().map((item, i) => {\n  const job = $(\"Build Prep Requests\").itemMatching(i).json;\n  const cv = norm(job.cv_text);\n  let p;\n  try { p = JSON.parse(item.json.choices[0].message.content); }\n  catch (e) { return { json: { id: job.row_id, ok: false, error: String(item.json.error?.message || e.message).slice(0, 200) } }; }\n  const cvRaw = String(job.cv_text);\n  const unq = (s) => String(s || \"\").trim().replace(/^[\"'“”]+|[\"'“”]+$/g, \"\");\n  let checked = 0, unverified = 0, invented = 0;\n  const qs = (p.likely_questions || []).map((q, n) => {\n    let ev = \"\";\n    const quote = unq(q.cv_evidence);\n    const nums = (String(q.answer_outline).match(/\\d+(?:[.,]\\d+)?%?/g) || []).filter((x) => !cvRaw.includes(x));\n    const numWarn = nums.length ? \"   ⚠️ Check: \" + nums.join(\", \") + \" is not in your CV – remove it unless it is true\" : \"\";\n    if (nums.length) invented++;\n    if (quote) {\n      checked++;\n      if (cv.includes(norm(quote))) ev = \"   From your CV: \\\"\" + quote + \"\\\"\";\n      else { unverified++; ev = \"   ⚠️ Check this: the AI's CV quote was not found in your CV\"; }\n    }\n    return [(n + 1) + \". \" + q.question, \"   Why they ask: \" + q.why_they_ask, \"   How to answer: \" + q.answer_outline, ev, numWarn].filter(Boolean).join(\"\\n\");\n  });\n  const list = (arr) => (arr || []).map((x) => \"- \" + x).join(\"\\n\");\n  const text = [\n    \"INTERVIEW PREP – \" + job.title + \" at \" + job.company,\n    \"\",\n    \"YOUR ONE-MINUTE PITCH\",\n    p.one_minute_pitch,\n    \"\",\n    \"LIKELY QUESTIONS\",\n    qs.join(\"\\n\\n\"),\n    \"\",\n    \"TOPICS TO REVISE\",\n    list(p.topics_to_revise),\n    \"\",\n    \"QUESTIONS TO ASK THEM\",\n    list(p.questions_to_ask_them),\n    \"\",\n    \"RESEARCH BEFORE THE INTERVIEW\",\n    list(p.research_checklist),\n    \"\",\n    \"Quality check: \" + (checked - unverified) + \" of \" + checked + \" CV quotes verified; \" + invented + \" answer(s) contain numbers not in your CV.\",\n    \"These are suggestions written by AI. Replace anything that is not true for you, and fill every [add your own example].\"\n  ].join(\"\\n\");\n  return { json: { id: job.row_id, ok: true, interview_prep: text } };\n});\n"
+      },
+      "name": "Format Interview Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        208
+      ],
+      "id": "0e3e7a4e-3a79-41d2-86a8-cc3446ec2a60"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Prep OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2080,
+        208
+      ],
+      "id": "cf3dfe7f-b185-48f9-a611-361dad099975"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "interview_prep": "={{ $json.interview_prep }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "interview_prep",
+              "displayName": "interview_prep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save Interview Prep",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2288,
+        144
+      ],
+      "id": "ce02a5ef-2dfc-43c4-8239-c1b4d7c20255"
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Find Interview Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Now (test)": {
+      "main": [
+        [
+          {
+            "node": "Find Interview Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Interview Jobs": {
+      "main": [
+        [
+          {
+            "node": "Max 3 Per Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Max 3 Per Run": {
+      "main": [
+        [
+          {
+            "node": "Reed Job?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reed Job?": {
+      "main": [
+        [
+          {
+            "node": "Get Full Reed Advert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "All Interview Jobs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Full Reed Advert": {
+      "main": [
+        [
+          {
+            "node": "Add Advert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Advert": {
+      "main": [
+        [
+          {
+            "node": "All Interview Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Interview Jobs": {
+      "main": [
+        [
+          {
+            "node": "Build Prep Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prep Requests": {
+      "main": [
+        [
+          {
+            "node": "Ask Groq: Interview Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Groq: Interview Prep": {
+      "main": [
+        [
+          {
+            "node": "Format Interview Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Interview Prep": {
+      "main": [
+        [
+          {
+            "node": "Prep OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep OK?": {
+      "main": [
+        [
+          {
+            "node": "Save Interview Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,93 @@
+{
+  "name": "Job Agent - Accuracy Test",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Agent – Accuracy Test\n1. In the **Job Tracker** table, fill the **my_fit** column for ~20 jobs with your own judgement: **Strong**, **Possible**, **Weak** or **Red flag** (try not to look at the agent's fit first).\n2. Click **Execute**. The result shows how often you and the agent agree, precision/recall for the apply / don't-apply decision, and every disagreement.",
+        "height": 220,
+        "width": 820,
+        "color": 6
+      },
+      "name": "How to use",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -112
+      ],
+      "id": "a8363b19-937b-464e-b50d-1cb0b3f9b5e1"
+    },
+    {
+      "parameters": {},
+      "name": "Run Accuracy Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        192
+      ],
+      "id": "25981d69-4258-44f5-86bd-45ae3ca22f8b"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "returnAll": true
+      },
+      "name": "Read Job Tracker",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        192
+      ],
+      "alwaysOutputData": true,
+      "id": "824d3f74-e7e7-4721-8b16-7af92cf682c0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ACCURACY TEST – compares the agent's fit rating with the candidate's own rating (my_fit)\n// on jobs she labelled by hand. Reports:\n// - exact agreement on the 4 fit bands (Strong / Possible / Weak / Red flag)\n// - \"apply or not\" agreement: Strong + Possible = apply, Weak + Red flag = don't apply\n//   with precision (of the jobs the agent says apply to, how many she agrees with)\n//   and recall (of the jobs she wants, how many the agent found)\n// - average score per band she chose, a confusion matrix and every disagreement\nconst BANDS = [\"Strong\", \"Possible\", \"Weak\", \"Red flag\"];\nconst norm = (s) => {\n  const t = String(s || \"\").trim().toLowerCase();\n  return BANDS.find((b) => b.toLowerCase() === t) || (t.startsWith(\"red\") ? \"Red flag\" : \"\");\n};\nconst rows = $input.all().map((i) => i.json).filter((r) => r.job_id && norm(r.my_fit) && norm(r.fit));\nif (!rows.length) return [{ json: { message: \"No labelled jobs yet. Fill the my_fit column (Strong / Possible / Weak / Red flag) for about 20 jobs, then run again.\" } }];\n\nconst apply = (b) => b === \"Strong\" || b === \"Possible\";\nlet exact = 0, tp = 0, fp = 0, fn = 0, tn = 0;\nconst matrix = Object.fromEntries(BANDS.map((h) => [h, Object.fromEntries(BANDS.map((a) => [a, 0]))]));\nconst disagreements = [];\nconst scoresByHuman = Object.fromEntries(BANDS.map((b) => [b, []]));\nfor (const r of rows) {\n  const human = norm(r.my_fit), agent = norm(r.fit);\n  matrix[human][agent]++;\n  scoresByHuman[human].push(Number(r.match_score) || 0);\n  if (human === agent) exact++;\n  else disagreements.push(`${r.title} (${r.company}): you said ${human}, agent said ${agent} (${r.match_score})`);\n  if (apply(agent) && apply(human)) tp++;\n  else if (apply(agent) && !apply(human)) fp++;\n  else if (!apply(agent) && apply(human)) fn++;\n  else tn++;\n}\nconst pct = (a, b) => (b ? Math.round((100 * a) / b) : null);\nreturn [{ json: {\n  labelled_jobs: rows.length,\n  exact_band_agreement_pct: pct(exact, rows.length),\n  apply_decision_agreement_pct: pct(tp + tn, rows.length),\n  apply_precision_pct: pct(tp, tp + fp),\n  apply_recall_pct: pct(tp, tp + fn),\n  avg_agent_score_by_your_band: Object.fromEntries(BANDS.filter((b) => scoresByHuman[b].length)\n    .map((b) => [b, Math.round(scoresByHuman[b].reduce((s, x) => s + x, 0) / scoresByHuman[b].length)])),\n  confusion_matrix_rows_you_cols_agent: matrix,\n  disagreements\n} }];\n"
+      },
+      "name": "Compare With My Ratings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        192
+      ],
+      "id": "781fc2d1-c714-4e4c-8088-8ddd943a8da4"
+    }
+  ],
+  "connections": {
+    "Run Accuracy Test": {
+      "main": [
+        [
+          {
+            "node": "Read Job Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Job Tracker": {
+      "main": [
+        [
+          {
+            "node": "Compare With My Ratings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

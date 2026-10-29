@@ -1,0 +1,209 @@
+{
+  "name": "Job Agent - Word Downloads",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Agent – Word Downloads\nOpen in your browser:\n**CV:** http://localhost:5678/webhook/tailored-cv?job_id=reed-57483925\n**Cover letter:** add **&type=letter**\nBuilds a real .docx from your CV + the tailored text saved for that job. Only top matches (with a tailored CV) have one. Local only.",
+        "height": 200,
+        "width": 900,
+        "color": 5
+      },
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -112
+      ],
+      "id": "aa317765-2ddb-491a-a5b3-14aac5bc8183"
+    },
+    {
+      "parameters": {
+        "path": "tailored-cv",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Download Link Clicked",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        192
+      ],
+      "id": "32ddf640-4835-4ccd-a72c-7a4667b2dcf5"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Job Tracker"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "keyValue": "={{ $json.query.job_id }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "name": "Find Job",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        192
+      ],
+      "alwaysOutputData": true,
+      "id": "b22d79f8-17a4-4550-afe6-54b414af6bcc"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has",
+              "leftValue": "={{ Boolean($json.job_id) && Boolean($('Download Link Clicked').first().json.query.type === 'letter' ? $json.cover_letter : $json.tailored_cv) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Has Tailored Text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        192
+      ],
+      "id": "dbd84d80-7a4b-47a5-8b3f-dc585b1b5a21"
+    },
+    {
+      "parameters": {
+        "jsCode": "// BUILD WORD FILE (.docx)\n// Builds a real Word document from my CV + the tailored text saved for this job.\n// A .docx file is a zip of XML files; this code writes the XML and the zip itself\n// (no external libraries needed).\nconst job = $input.first().json;\nconst type = String($(\"Download Link Clicked\").first().json.query?.type || \"cv\").toLowerCase();\n\nconst ME = {\n  name: \"YOUR NAME\",\n  title: \"AI Engineer Intern | Machine Learning | LLMs & Agentic AI | AI Automation\",\n  contact: \"Your City, UK | +44 0000 000000 | you@example.com | linkedin.com/in/your-profile | github.com/your-username\",\n  summary: \"Computer Science graduate and MSc Artificial Intelligence student at Teesside University who builds practical, explainable LLM applications.\",\n  skills: [\n    [\"Programming Languages\", \"Python, JavaScript, Java, SQL, C, C++\"],\n    [\"LLMs & Agentic AI\", \"Large Language Models (LLMs), Generative AI, LangChain, LangGraph, Groq API, Prompt Engineering, Context Engineering, Structured Outputs (JSON Schema), LLM Output Verification\"],\n    [\"AI Workflow Automation\", \"n8n (Webhooks, Form Trigger, Schedule Trigger, HTTP Request, Code nodes, Data Tables), API integration, error handling and retries\"],\n    [\"AI & Machine Learning\", \"Machine Learning, Deep Learning, Neural Networks, CNNs, Computer Vision, Model Training and Evaluation, TensorFlow, PyTorch, Scikit-learn, OpenCV, YOLO, Faster R-CNN\"],\n    [\"Responsible AI\", \"PII anonymisation, human-in-the-loop design, data minimisation (UK GDPR principles)\"],\n    [\"Data & Analytics\", \"Pandas, NumPy, Data Cleaning, Data Preprocessing, Exploratory Data Analysis\"],\n    [\"Web Development & APIs\", \"REST APIs, JSON, Flask, Node.js, Express.js, React.js, HTML, CSS, Spring Boot\"],\n    [\"Databases\", \"MySQL, SQL, MongoDB\"],\n    [\"Developer Tools\", \"Git, GitHub, Docker, VS Code, Jupyter Notebook, Postman\"]\n  ],\n  projects: [\n    { name: \"AI Job Hunt Agent\", tech: \"n8n, Groq API, Reed Jobs API, Remotive API, JavaScript, n8n Data Tables, Docker\", bullets: [\n      \"Built a scheduled n8n agent that runs 9 searches across the Reed and Remotive job APIs every morning and collects graduate, junior, internship and part-time roles in AI, data and IT.\",\n      \"Wrote JavaScript to merge both APIs into one format, remove senior roles, old and unrelated ads, keep only UK-eligible remote jobs, and remove duplicates.\",\n      \"An LLM rates each job requirement with an exact CV quote; code verifies every quote and calculates the match score, with warning flags for paid training schemes.\",\n      \"Generates tailored CVs, cover letters and interview prep, with a chat agent, run log and error alerts.\"] },\n    { name: \"AI CV Screening Assistant\", tech: \"n8n, Groq API (gpt-oss-20b), JavaScript, Webhooks, REST APIs, n8n Data Tables, HTML/CSS, Docker\", bullets: [\n      \"Built an n8n workflow that screens a CV against a job description and returns an evidence-based report, through an animated web form and a JSON webhook API.\",\n      \"Moved scoring out of the LLM: the model rates each requirement and JavaScript calculates a 0-100 score from a weighted rubric (required 50%, preferred 20%, experience 20%, education 10%).\",\n      \"Added a hallucination check that searches the CV for every AI evidence quote; unverified quotes get half credit and are flagged for the human reviewer.\",\n      \"Used strict JSON-schema output, temperature 0 and a fixed seed; the same CV scored 82/100 in 3 repeated runs.\"] }\n  ],\n  education: [\n    [\"MSc Artificial Intelligence – Teesside University, United Kingdom\", \"January 2026 – January 2028 (expected)\", \"Machine Learning, Deep Learning, Computer Vision, Natural Language Processing, Intelligent Systems and AI Applications.\"],\n    [\"B.Tech Computer Science and Engineering – Christu Jyothi Institute of Technology and Science, India\", \"October 2021 – July 2025\", \"Programming, Data Structures and Algorithms, Object-Oriented Programming, Database Management Systems and Software Engineering.\"]\n  ],\n  extra: [\"Availability: [your availability].\", \"References available upon request.\"]\n};\n\n// --- read the tailored text saved by the job agent ---\nconst t = String(job.tailored_cv || \"\");\nconst section = (start, end) => {\n  const i = t.indexOf(start); if (i < 0) return \"\";\n  const rest = t.slice(i + start.length);\n  const j = end ? rest.indexOf(end) : -1;\n  return (j >= 0 ? rest.slice(0, j) : rest).trim();\n};\nconst tSummary = section(\"PROFESSIONAL SUMMARY (tailored)\", \"KEY SKILLS\");\nconst tSkills = section(\"KEY SKILLS (put these first)\", \"PROJECT BULLETS\");\nconst tBullets = section(\"PROJECT BULLETS TO USE\", \"ATS KEYWORDS\").split(\"\\n\").map((l) => l.replace(/^[-•]\\s*/, \"\").trim()).filter(Boolean);\n\n// --- Word XML helpers ---\nconst esc = (s) => String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst run = (text, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:cs=\"Arial\"/>${o.b ? \"<w:b/>\" : \"\"}${o.i ? \"<w:i/>\" : \"\"}<w:sz w:val=\"${o.sz || 20}\"/>${o.color ? `<w:color w:val=\"${o.color}\"/>` : \"\"}</w:rPr><w:t xml:space=\"preserve\">${esc(text)}</w:t></w:r>`;\nconst para = (runs, o = {}) => `<w:p><w:pPr>${o.center ? '<w:jc w:val=\"center\"/>' : \"\"}<w:spacing w:before=\"${o.before || 0}\" w:after=\"${o.after ?? 60}\"/>${o.indent ? '<w:ind w:left=\"360\" w:hanging=\"220\"/>' : \"\"}${o.rule ? '<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"1F3A5F\"/></w:pBdr>' : \"\"}</w:pPr>${runs}</w:p>`;\nconst heading = (text) => para(run(text.toUpperCase(), { b: true, sz: 22, color: \"1F3A5F\" }), { before: 200, after: 80, rule: true });\nconst bullet = (text) => para(run(\"•  \") + run(text), { indent: true, after: 40 });\n\nlet body = \"\";\nlet fileName;\nif (type === \"letter\") {\n  const today = new Date().toLocaleDateString(\"en-GB\", { day: \"numeric\", month: \"long\", year: \"numeric\", timeZone: \"Europe/London\" });\n  body += para(run(\"Your Name\", { b: true, sz: 24 }), { after: 20 });\n  body += para(run(ME.contact, { sz: 18 }), { after: 240 });\n  body += para(run(today), { after: 240 });\n  body += para(run(\"Re: \" + job.title + \" – \" + job.company, { b: true }), { after: 200 });\n  String(job.cover_letter || \"\").split(/\\n+/).forEach((line) => { if (line.trim()) body += para(run(line.trim(), { sz: 21 }), { after: 160 }); });\n  fileName = \"Cover Letter - Your Name - \" + job.company;\n} else {\n  body += para(run(ME.name, { b: true, sz: 32, color: \"1F3A5F\" }), { center: true, after: 20 });\n  body += para(run(ME.title, { sz: 20 }), { center: true, after: 20 });\n  body += para(run(ME.contact, { sz: 17 }), { center: true, after: 120 });\n  body += heading(\"Professional Summary\");\n  body += para(run(tSummary || ME.summary, { sz: 20 }));\n  if (tSkills) { body += heading(\"Key Skills for this Role\"); body += para(run(tSkills.replace(/ · /g, \" | \"), { sz: 20 })); }\n  if (tBullets.length) { body += heading(\"Relevant Highlights\"); tBullets.forEach((b) => (body += bullet(b))); }\n  body += heading(\"Technical Skills\");\n  ME.skills.forEach(([k, v]) => (body += para(run(k + \": \", { b: true }) + run(v), { after: 40 })));\n  body += heading(\"Projects\");\n  ME.projects.forEach((p) => {\n    body += para(run(p.name, { b: true, sz: 21 }), { before: 80, after: 20 });\n    body += para(run(\"Technologies: \" + p.tech, { i: true, sz: 18 }), { after: 40 });\n    p.bullets.forEach((b) => (body += bullet(b)));\n  });\n  body += heading(\"Education\");\n  ME.education.forEach(([d, when, areas]) => {\n    body += para(run(d, { b: true }), { before: 60, after: 20 });\n    body += para(run(when, { i: true, sz: 18 }), { after: 20 });\n    body += para(run(\"Relevant areas: \" + areas, { sz: 19 }), { after: 60 });\n  });\n  body += heading(\"Additional Information\");\n  ME.extra.forEach((x) => (body += bullet(x)));\n  fileName = \"CV - Your Name - \" + job.company;\n}\nfileName = fileName.replace(/[^\\w\\s.-]/g, \"\").replace(/\\s+/g, \" \").trim() + \".docx\";\n\nconst docXml = `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>${body}<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"850\" w:right=\"900\" w:bottom=\"850\" w:left=\"900\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/></w:sectPr></w:body></w:document>`;\nconst files = {\n  \"[Content_Types].xml\": `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>`,\n  \"_rels/.rels\": `<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>`,\n  \"word/document.xml\": docXml\n};\n\n// --- tiny zip writer (stored, no compression) ---\nconst crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });\nconst crc32 = (bytes) => { let c = 0xffffffff; for (const b of bytes) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };\nconst enc = new TextEncoder();\nconst chunks = [], central = [];\nlet offset = 0;\nconst u16 = (v) => [v & 0xff, (v >>> 8) & 0xff];\nconst u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];\nfor (const [name, content] of Object.entries(files)) {\n  const nameB = enc.encode(name), data = enc.encode(content), crc = crc32(data);\n  const local = [...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameB.length), ...u16(0)];\n  chunks.push(Uint8Array.from(local), nameB, data);\n  central.push(Uint8Array.from([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameB.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), nameB);\n  offset += local.length + nameB.length + data.length;\n}\nconst cdSize = central.reduce((s, c) => s + c.length, 0);\nconst end = Uint8Array.from([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(3), ...u16(3), ...u32(cdSize), ...u32(offset), ...u16(0)]);\nconst all = [...chunks, ...central, end];\nconst total = all.reduce((s, c) => s + c.length, 0);\nconst zip = new Uint8Array(total);\nlet pos = 0; for (const c of all) { zip.set(c, pos); pos += c.length; }\n\nreturn [{\n  json: { fileName },\n  binary: { data: { data: Buffer.from(zip).toString(\"base64\"), mimeType: \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\", fileName, fileExtension: \"docx\" } }\n}];\n"
+      },
+      "name": "Build Word File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        96
+      ],
+      "id": "0b13d8ff-fd15-4ede-b746-9e098d303005"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Disposition",
+                "value": "=attachment; filename=\"{{ $json.fileName }}\""
+              }
+            ]
+          }
+        }
+      },
+      "name": "Send Word File",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        96
+      ],
+      "id": "e798f6ff-71d8-4c9d-8ecb-0a9401dbfcf9"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "No tailored CV or cover letter is saved for this job yet. Only the top matches get one. Check the job_id in your Job Tracker.",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "name": "Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        320
+      ],
+      "id": "8375cab1-7933-45df-bb91-56be41413bba"
+    }
+  ],
+  "connections": {
+    "Download Link Clicked": {
+      "main": [
+        [
+          {
+            "node": "Find Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Job": {
+      "main": [
+        [
+          {
+            "node": "Has Tailored Text?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Tailored Text?": {
+      "main": [
+        [
+          {
+            "node": "Build Word File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Word File": {
+      "main": [
+        [
+          {
+            "node": "Send Word File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

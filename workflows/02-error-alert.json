@@ -1,0 +1,336 @@
+{
+  "name": "Job Agent - Error Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Job Agent – Error Alert\n1. Click **Create Run Log table** once (safe to re-run: it reuses the table).\n2. In the AI Job Hunt Agent's Settings, choose this workflow as the **Error Workflow**. Any crash is then logged in the Run Log with status FAILED.",
+        "height": 200,
+        "width": 760,
+        "color": 3
+      },
+      "name": "Note -40",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -192
+      ],
+      "id": "0bc12f55-3f20-43c0-a748-f0d74ca04f85"
+    },
+    {
+      "parameters": {},
+      "name": "Create Run Log table",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        48
+      ],
+      "id": "3259ffb2-07db-44a2-9163-2583a3e57b1c"
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "Run Log",
+        "columns": {
+          "column": [
+            {
+              "name": "run_at"
+            },
+            {
+              "name": "trigger"
+            },
+            {
+              "name": "status"
+            },
+            {
+              "name": "jobs_found",
+              "type": "number"
+            },
+            {
+              "name": "new_jobs",
+              "type": "number"
+            },
+            {
+              "name": "full_adverts",
+              "type": "number"
+            },
+            {
+              "name": "ai_scored",
+              "type": "number"
+            },
+            {
+              "name": "ai_failed",
+              "type": "number"
+            },
+            {
+              "name": "strong_matches",
+              "type": "number"
+            },
+            {
+              "name": "red_flags",
+              "type": "number"
+            },
+            {
+              "name": "tailored",
+              "type": "number"
+            },
+            {
+              "name": "ai_tokens",
+              "type": "number"
+            },
+            {
+              "name": "duration_sec",
+              "type": "number"
+            },
+            {
+              "name": "notes"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "name": "Create Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        96,
+        48
+      ],
+      "id": "585398ba-4207-4c23-a0cf-2166d8e1e11c"
+    },
+    {
+      "parameters": {},
+      "name": "When Job Agent Fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        256
+      ],
+      "id": "d1655e38-b588-4099-8954-4c81c03c35c0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FORMAT ERROR – turns a crash of the AI Job Hunt Agent into a Run Log row\nconst e = $input.first().json;\nconst ex = e.execution || {};\nreturn [{ json: {\n  run_at: new Date().toLocaleString(\"en-GB\", { timeZone: \"Europe/London\" }),\n  trigger: ex.mode || \"\",\n  status: \"FAILED\",\n  notes: `${e.workflow?.name || \"Workflow\"} failed at \"${ex.lastNodeExecuted || \"?\"}\": ${ex.error?.message || \"unknown error\"} (execution ${ex.id || \"?\"})`.slice(0, 1000)\n} }];\n"
+      },
+      "name": "Format Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        256
+      ],
+      "id": "fe3dbc89-23a0-4279-abb3-25474d934a33"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_at",
+              "displayName": "run_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "trigger",
+              "displayName": "trigger",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "jobs_found",
+              "displayName": "jobs_found",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "new_jobs",
+              "displayName": "new_jobs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "full_adverts",
+              "displayName": "full_adverts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_scored",
+              "displayName": "ai_scored",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_failed",
+              "displayName": "ai_failed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "strong_matches",
+              "displayName": "strong_matches",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "red_flags",
+              "displayName": "red_flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "tailored",
+              "displayName": "tailored",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_tokens",
+              "displayName": "ai_tokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "duration_sec",
+              "displayName": "duration_sec",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Log Failed Run",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        336,
+        256
+      ],
+      "id": "400d78c6-24fb-4afa-8cf5-527fb9c4002f"
+    }
+  ],
+  "connections": {
+    "Create Run Log table": {
+      "main": [
+        [
+          {
+            "node": "Create Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Job Agent Fails": {
+      "main": [
+        [
+          {
+            "node": "Format Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error": {
+      "main": [
+        [
+          {
+            "node": "Log Failed Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
